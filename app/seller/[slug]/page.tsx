@@ -1,6 +1,35 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { pageTitle } from "@/lib/seo";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const supabase = await createClient();
+
+  const { data: seller } = await supabase
+    .from("sellers")
+    .select("business_name, description")
+    .eq("slug", slug)
+    .eq("verification_status", "approved")
+    .single();
+
+  if (!seller) {
+    return { title: pageTitle("بائع غير موجود") };
+  }
+
+  return {
+    title: pageTitle(`${seller.business_name} بالزلفي`),
+    description:
+      seller.description?.slice(0, 160) ??
+      `${seller.business_name} بالزلفي — تصفح إعلاناته وتواصل مباشرة عبر واتساب.`,
+  };
+}
 
 export default async function SellerPage({
   params,

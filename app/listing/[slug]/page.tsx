@@ -1,7 +1,40 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { pageTitle } from "@/lib/seo";
 import WhatsappButton from "./whatsapp-button";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const supabase = await createClient();
+
+  const { data: listing } = await supabase
+    .from("listings")
+    .select("title, description, sellers(business_name)")
+    .eq("slug", slug)
+    .eq("status", "published")
+    .single();
+
+  if (!listing) {
+    return { title: pageTitle("إعلان غير موجود") };
+  }
+
+  return {
+    title: pageTitle(
+      listing.sellers
+        ? `${listing.title} — ${listing.sellers.business_name}`
+        : listing.title
+    ),
+    description:
+      listing.description?.slice(0, 160) ??
+      `${listing.title} بالزلفي — تواصل مباشرة عبر واتساب.`,
+  };
+}
 
 export default async function ListingPage({
   params,

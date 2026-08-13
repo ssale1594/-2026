@@ -1,6 +1,33 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { pageTitle } from "@/lib/seo";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const supabase = await createClient();
+
+  const { data: category } = await supabase
+    .from("categories")
+    .select("name_ar")
+    .eq("slug", slug)
+    .eq("is_active", true)
+    .single();
+
+  if (!category) {
+    return { title: pageTitle("فئة غير موجودة") };
+  }
+
+  return {
+    title: pageTitle(`${category.name_ar} بالزلفي`),
+    description: `تصفح ${category.name_ar} بالزلفي — تواصل مباشرة مع البائع عبر واتساب.`,
+  };
+}
 
 export default async function CategoryPage({
   params,

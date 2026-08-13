@@ -1,0 +1,47 @@
+import type { MetadataRoute } from "next";
+import { createClient } from "@/lib/supabase/server";
+import { siteUrl } from "@/lib/seo";
+
+export const revalidate = 3600;
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const supabase = await createClient();
+
+  const [categories, sellers, listings] = await Promise.all([
+    supabase.from("categories").select("slug").eq("is_active", true),
+    supabase
+      .from("sellers")
+      .select("slug, updated_at")
+      .eq("verification_status", "approved"),
+    supabase
+      .from("listings")
+      .select("slug, updated_at")
+      .eq("status", "published"),
+  ]);
+
+  return [
+    {
+      url: siteUrl,
+      lastModified: new Date(),
+      changeFrequency: "daily",
+      priority: 1,
+    },
+    ...(categories.data ?? []).map((category) => ({
+      url: `${siteUrl}/category/${category.slug}`,
+      changeFrequency: "daily" as const,
+      priority: 0.8,
+    })),
+    ...(sellers.data ?? []).map((seller) => ({
+      url: `${siteUrl}/seller/${seller.slug}`,
+      lastModified: new Date(seller.updated_at),
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+    })),
+    ...(listings.data ?? []).map((listing) => ({
+      url: `${siteUrl}/listing/${listing.slug}`,
+      lastModified: new Date(listing.updated_at),
+      changeFrequency: "weekly" as const,
+      priority: 0.6,
+    })),
+  ];
+}

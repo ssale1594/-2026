@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import SearchBox from "@/components/search-box";
 
 export default async function Home() {
   const supabase = await createClient();
@@ -21,6 +22,10 @@ export default async function Home() {
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-10">
+        <div className="mb-10">
+          <SearchBox />
+        </div>
+
         <h1 className="text-xl font-semibold mb-6">تصفح حسب الفئة</h1>
 
         {!categories || categories.length === 0 ? (
