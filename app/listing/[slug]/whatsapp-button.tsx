@@ -1,5 +1,7 @@
 "use client";
 
+import { siteName } from "@/lib/seo";
+
 export default function WhatsappButton({
   listingId,
   whatsappNumber,
@@ -11,7 +13,9 @@ export default function WhatsappButton({
 }) {
   // wa.me requires digits only (country code, no leading +/00/spaces).
   const digitsOnly = whatsappNumber.replace(/\D/g, "");
-  const message = encodeURIComponent(`مرحبًا، أشوف إعلانك "${listingTitle}" بسوق الزلفي وحاب أستفسر عنه.`);
+  const message = encodeURIComponent(
+    `مرحبًا، أشوف إعلانك "${listingTitle}" بـ${siteName} وحاب أستفسر عنه.`
+  );
   const href = `https://wa.me/${digitsOnly}?text=${message}`;
 
   return (

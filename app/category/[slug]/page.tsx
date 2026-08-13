@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { pageTitle } from "@/lib/seo";
+import { pageTitle, siteName } from "@/lib/seo";
 
 export async function generateMetadata({
   params,
@@ -63,7 +63,7 @@ export default async function CategoryPage({
       <header className="border-b border-black/[.08] dark:border-white/[.145]">
         <div className="mx-auto max-w-5xl px-4 py-5 flex items-center justify-between">
           <Link href="/" className="text-lg font-bold">
-            سوق الزلفي
+            {siteName}
           </Link>
           <nav className="text-sm text-black/60 dark:text-white/60">
             {category.name_ar}

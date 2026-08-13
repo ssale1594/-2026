@@ -1,11 +1,12 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
+import { pageTitle, siteName } from "@/lib/seo";
 import SearchBox from "@/components/search-box";
 
 // TECH.md §8 — dynamic search pages carry no SEO value and must stay out of the index.
 export const metadata: Metadata = {
-  title: "البحث | سوق الزلفي",
+  title: pageTitle("البحث"),
   robots: { index: false, follow: true },
 };
 
@@ -39,7 +40,7 @@ export default async function SearchPage({
       <header className="border-b border-black/[.08] dark:border-white/[.145]">
         <div className="mx-auto max-w-5xl px-4 py-5">
           <Link href="/" className="text-lg font-bold">
-            سوق الزلفي
+            {siteName}
           </Link>
         </div>
       </header>

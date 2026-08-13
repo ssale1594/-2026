@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { siteName } from "@/lib/seo";
 import LoginForm from "./login-form";
 
 export default function LoginPage() {
@@ -7,7 +8,7 @@ export default function LoginPage() {
       <header className="border-b border-black/[.08] dark:border-white/[.145]">
         <div className="mx-auto max-w-5xl px-4 py-5">
           <Link href="/" className="text-lg font-bold">
-            سوق الزلفي
+            {siteName}
           </Link>
         </div>
       </header>

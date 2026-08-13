@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { siteName } from "@/lib/seo";
 import SearchBox from "@/components/search-box";
 
 export default async function Home() {
@@ -14,7 +15,7 @@ export default async function Home() {
     <div className="min-h-screen font-sans">
       <header className="border-b border-black/[.08] dark:border-white/[.145]">
         <div className="mx-auto max-w-5xl px-4 py-5 flex items-center justify-between">
-          <span className="text-lg font-bold">سوق الزلفي</span>
+          <span className="text-lg font-bold">{siteName}</span>
           <nav className="text-sm text-black/60 dark:text-white/60">
             دليل محلات، أسر منتجة، خدمات، عقار، ومستعمل
           </nav>
