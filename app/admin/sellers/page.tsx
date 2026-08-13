@@ -1,0 +1,71 @@
+import Link from "next/link";
+import { requireAdmin } from "@/lib/auth/permissions";
+import { createClient } from "@/lib/supabase/server";
+import { setSellerVerification } from "../actions";
+import ReviewButtons from "../review-buttons";
+
+export default async function AdminSellersPage() {
+  await requireAdmin();
+  const supabase = await createClient();
+
+  const { data: sellers } = await supabase
+    .from("sellers")
+    .select("id, business_name, business_type, description, whatsapp_number, created_at")
+    .eq("verification_status", "pending")
+    .order("created_at");
+
+  return (
+    <div className="min-h-screen font-sans">
+      <header className="border-b border-black/[.08] dark:border-white/[.145]">
+        <div className="mx-auto max-w-5xl px-4 py-5 flex items-center justify-between">
+          <span className="text-lg font-bold">لوحة الإدارة</span>
+          <nav className="flex gap-4 text-sm">
+            <span>البائعون</span>
+            <Link href="/admin/listings" className="text-black/60 dark:text-white/60">
+              الإعلانات
+            </Link>
+          </nav>
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-5xl px-4 py-10">
+        <h1 className="text-xl font-semibold mb-6">بائعون بانتظار المراجعة</h1>
+
+        {!sellers || sellers.length === 0 ? (
+          <p className="text-black/60 dark:text-white/60">ما فيه طلبات جديدة.</p>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {sellers.map((seller) => (
+              <li
+                key={seller.id}
+                className="rounded-lg border border-black/[.08] dark:border-white/[.145] p-4 flex items-start justify-between gap-4"
+              >
+                <div>
+                  <div className="font-medium">{seller.business_name}</div>
+                  <div className="text-sm text-black/60 dark:text-white/60 mt-1">
+                    {seller.whatsapp_number}
+                  </div>
+                  {seller.description && (
+                    <p className="text-sm text-black/60 dark:text-white/60 mt-2">
+                      {seller.description}
+                    </p>
+                  )}
+                </div>
+                <ReviewButtons
+                  onApprove={async () => {
+                    "use server";
+                    await setSellerVerification(seller.id, "approved");
+                  }}
+                  onReject={async () => {
+                    "use server";
+                    await setSellerVerification(seller.id, "rejected");
+                  }}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </main>
+    </div>
+  );
+}
