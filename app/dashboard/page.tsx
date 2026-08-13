@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireSeller } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { archiveListing } from "./listings/[id]/edit/actions";
+import ArchiveButton from "./archive-button";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "مسودة",
@@ -84,8 +86,25 @@ export default async function DashboardPage() {
                     {listing.price != null && ` · ${listing.price} ر.س`}
                   </div>
                 </div>
-                <div className="text-xs text-black/50 dark:text-white/50 shrink-0">
-                  {listing.view_count} مشاهدة · {listing.contact_click_count} تواصل
+                <div className="flex items-center gap-4 shrink-0">
+                  <div className="text-xs text-black/50 dark:text-white/50">
+                    {listing.view_count} مشاهدة · {listing.contact_click_count}{" "}
+                    تواصل
+                  </div>
+                  <Link
+                    href={`/dashboard/listings/${listing.id}/edit`}
+                    className="text-sm text-black/60 dark:text-white/60 hover:underline"
+                  >
+                    تعديل
+                  </Link>
+                  {listing.status !== "archived" && (
+                    <ArchiveButton
+                      onArchive={async () => {
+                        "use server";
+                        await archiveListing(listing.id);
+                      }}
+                    />
+                  )}
                 </div>
               </li>
             ))}
