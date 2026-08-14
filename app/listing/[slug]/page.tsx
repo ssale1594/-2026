@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { pageTitle, siteName } from "@/lib/seo";
+import { listingImageUrl } from "@/lib/storage";
 import WhatsappButton from "./whatsapp-button";
 import ViewTracker from "./view-tracker";
 
@@ -89,9 +90,12 @@ export default async function ListingPage({
         ) : (
           <div className="grid grid-cols-2 gap-2 mb-6">
             {images.map((image) => (
-              <div
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
                 key={image.storage_path}
-                className="aspect-video rounded-lg bg-black/[.04] dark:bg-white/[.06]"
+                src={listingImageUrl(image.storage_path)}
+                alt={listing.title}
+                className="aspect-video w-full rounded-lg object-cover bg-black/[.04] dark:bg-white/[.06]"
               />
             ))}
           </div>

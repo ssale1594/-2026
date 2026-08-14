@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { pageTitle, siteName } from "@/lib/seo";
+import { listingImageUrl } from "@/lib/storage";
 
 export async function generateMetadata({
   params,
@@ -80,12 +81,26 @@ export default async function CategoryPage({
           </p>
         ) : (
           <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {listings.map((listing) => (
+            {listings.map((listing) => {
+              const primaryImage =
+                listing.listing_images?.find((image) => image.is_primary) ??
+                listing.listing_images?.[0];
+
+              return (
               <li key={listing.id}>
                 <Link
                   href={`/listing/${listing.slug}`}
-                  className="block rounded-lg border border-black/[.08] dark:border-white/[.145] p-4 hover:bg-black/[.03] dark:hover:bg-white/[.06] transition-colors"
+                  className="block rounded-lg border border-black/[.08] dark:border-white/[.145] overflow-hidden hover:bg-black/[.03] dark:hover:bg-white/[.06] transition-colors"
                 >
+                  {primaryImage && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={listingImageUrl(primaryImage.storage_path)}
+                      alt={listing.title}
+                      className="aspect-video w-full object-cover"
+                    />
+                  )}
+                  <div className="p-4">
                   <div className="font-medium mb-1">{listing.title}</div>
                   {listing.price != null && (
                     <div className="text-sm text-black/60 dark:text-white/60">
@@ -98,9 +113,11 @@ export default async function CategoryPage({
                       {listing.sellers.business_name}
                     </div>
                   )}
+                  </div>
                 </Link>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </main>

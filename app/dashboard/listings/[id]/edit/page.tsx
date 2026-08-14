@@ -4,6 +4,7 @@ import { requireSeller } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { siteName } from "@/lib/seo";
 import EditListingForm from "./edit-listing-form";
+import ImageManager from "./image-manager";
 
 export default async function EditListingPage({
   params,
@@ -31,6 +32,12 @@ export default async function EditListingPage({
     .eq("is_active", true)
     .order("sort_order");
 
+  const { data: images } = await supabase
+    .from("listing_images")
+    .select("id, storage_path")
+    .eq("listing_id", listing.id)
+    .order("sort_order");
+
   return (
     <div className="min-h-screen font-sans">
       <header className="border-b border-black/[.08] dark:border-white/[.145]">
@@ -52,6 +59,13 @@ export default async function EditListingPage({
         <p className="text-sm text-black/60 dark:text-white/60 mb-6">
           أي تعديل يرجّع الإعلان للمراجعة قبل ظهوره من جديد.
         </p>
+        <div className="mb-8">
+          <ImageManager
+            sellerId={seller.id}
+            listingId={listing.id}
+            images={images ?? []}
+          />
+        </div>
         <EditListingForm listing={listing} categories={categories ?? []} />
       </main>
     </div>
