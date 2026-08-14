@@ -68,14 +68,22 @@
 - [x] إصلاح أنواع TypeScript للعلاقات المتداخلة بـSupabase (اكتُشفت بأول `tsc`/`build` فعلي)
 
 ## ⏳ باقي من المرحلة 1
-- [ ] **الاشتراكات والدفع (Tap)** — الجداول جاهزة، ما فيه تكامل (يحتاج حساب Tap ومفاتيحه منك)
 - [ ] **بيانات أحياء الزلفي الحقيقية** — الجدول فاضٍ، يحتاج قائمة موثوقة منك
+
+### الدفع (Tap) — الكود جاهز، التفعيل الحقيقي معلّق عليك
+- [x] `/dashboard/subscription` — عرض الخطة (99 ر.س/شهر، مؤقت) وبدء الاشتراك
+- [x] `lib/payments/tap.ts` — إنشاء charge + تحقق توقيع webhook (HMAC)
+- [x] `app/api/webhooks/tap` — مصدر الحقيقة الوحيد لتفعيل الاشتراك، idempotent عبر `payment_events`، مُختبر يرفض webhook بتوقيع خاطئ (401) فعليًا
+- [x] الخطة مزروعة بقاعدة البيانات (id=1, 99 ر.س)
+- [ ] **غير مختبر مع Tap حقيقي** — لا يوجد حساب Tap بعد (معلّق على رخصة العمل الحر). لما يتوفر الحساب: عبّي `TAP_SECRET_KEY`/`TAP_WEBHOOK_SECRET`، وتأكد كتابيًا من Tap إن recurring billing مدعوم (TECH.md §7) قبل أي اعتماد فعلي
+- [ ] **التجديد التلقائي غير مبني** — الكود الحالي يفعّل اشتراك شهر واحد بعد الدفع الأول بس؛ التجديد يحتاج job مجدول يعيد تحصيل البطاقة المحفوظة، لسا ما بنيناه
 
 ## دروس مهمة من أول تشغيل فعلي (تفيد أي مشروع Supabase جديد)
 1. **مشاريع Supabase الجديدة ما تمنح GRANT أساسي تلقائيًا** لـ`anon`/`authenticated` — لازم `grant all on all tables in schema public to anon, authenticated, service_role;` صراحة (migration 11).
 2. **RLS يتفعّل تلقائيًا على كل جدول جديد** حتى لو ما استدعيت `enable row level security` بنفسك — أي جدول بدون policy صريحة يرجع نتائج فاضية بصمت (200 OK, بدون خطأ) لكل الأدوار ما عدا `service_role`. الجداول المرجعية العامة (categories, regions, neighborhoods, plans) احتاجت `for select using (true)` صريحة (migration 12).
-3. **مفتاح `service_role` يتجاوز RLS دايمًا** — مفيد جدًا للتشخيص (لو شغّال بس anon فاضي، المشكلة صلاحيات/RLS مو بيانات).
-4. **SQL Editor بـSupabase يشتغل autocommit لكل statement** (مو transaction واحدة) — لو سكربت طويل يفشل بمنتصفه، أول نص يتنفذ يبقى محفوظ. خلّينا كل migration لاحقة idempotent (`if not exists`, `on conflict do nothing`, `drop policy if exists`) عشان تتحمّل إعادة التشغيل بأمان.
+3. **`npm run build` و`npm run dev` ما يشتغلون بنفس الوقت** — كلاهما يكتب على `.next` بالتزامن ويسبب تلف (`ENOENT` بملفات مؤقتة). أوقف `dev` قبل أي `build` تجريبي، أو احذف `.next` وأعد التشغيل لو صار تعارض.
+4. **مفتاح `service_role` يتجاوز RLS دايمًا** — مفيد جدًا للتشخيص (لو شغّال بس anon فاضي، المشكلة صلاحيات/RLS مو بيانات).
+5. **SQL Editor بـSupabase يشتغل autocommit لكل statement** (مو transaction واحدة) — لو سكربت طويل يفشل بمنتصفه، أول نص يتنفذ يبقى محفوظ. خلّينا كل migration لاحقة idempotent (`if not exists`, `on conflict do nothing`, `drop policy if exists`) عشان تتحمّل إعادة التشغيل بأمان.
 
 ## ملاحظات تقنية للجلسة الجاية
 - ما فيه أنواع TypeScript مولّدة من Supabase (`database.types.ts`) — الأنواع اليدوية عبر `.returns<T>()`/`.single<T>()` شغّالة حاليًا، بس `npx supabase gen types typescript` أنضف حل طويل المدى
