@@ -42,8 +42,17 @@ export async function createListing(
     return { error: "الفئة غير موجودة" };
   }
 
-  // The free-tier limit is also enforced by the listings_insert_own RLS policy
-  // via can_create_listing(); this check only gives a friendlier message.
+  // Both limits are re-checked inside the listings_insert_own RLS policy too —
+  // these calls only exist to turn a generic RLS rejection into a clear message.
+  const { data: withinDailyLimit } = await supabase.rpc(
+    "can_create_listing_today",
+    { p_seller_id: seller.id }
+  );
+
+  if (withinDailyLimit === false) {
+    return { error: "وصلت الحد الأقصى لإضافة إعلانات اليوم (3 إعلانات). جرّب بكرة." };
+  }
+
   const { error } = await supabase.from("listings").insert({
     seller_id: seller.id,
     category_id: category.id,
