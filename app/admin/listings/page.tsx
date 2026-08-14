@@ -12,7 +12,17 @@ export default async function AdminListingsPage() {
     .from("listings")
     .select("id, title, description, price, sellers(business_name), categories(name_ar)")
     .eq("status", "pending_review")
-    .order("created_at");
+    .order("created_at")
+    .returns<
+      {
+        id: string;
+        title: string;
+        description: string | null;
+        price: number | null;
+        sellers: { business_name: string } | null;
+        categories: { name_ar: string } | null;
+      }[]
+    >();
 
   return (
     <div className="min-h-screen font-sans">

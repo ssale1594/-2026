@@ -57,7 +57,19 @@ export default async function CategoryPage({
     .eq("category_id", category.id)
     .eq("status", "published")
     .order("is_featured", { ascending: false })
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .returns<
+      {
+        id: string;
+        title: string;
+        slug: string;
+        price: number | null;
+        price_negotiable: boolean;
+        is_featured: boolean;
+        sellers: { business_name: string; slug: string } | null;
+        listing_images: { storage_path: string; is_primary: boolean }[];
+      }[]
+    >();
 
   return (
     <div className="min-h-screen font-sans">

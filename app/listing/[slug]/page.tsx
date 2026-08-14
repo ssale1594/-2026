@@ -20,7 +20,11 @@ export async function generateMetadata({
     .select("title, description, sellers(business_name)")
     .eq("slug", slug)
     .eq("status", "published")
-    .single();
+    .single<{
+      title: string;
+      description: string | null;
+      sellers: { business_name: string } | null;
+    }>();
 
   if (!listing) {
     return { title: pageTitle("إعلان غير موجود") };
@@ -53,7 +57,16 @@ export default async function ListingPage({
     )
     .eq("slug", slug)
     .eq("status", "published")
-    .single();
+    .single<{
+      id: string;
+      title: string;
+      description: string | null;
+      price: number | null;
+      price_negotiable: boolean;
+      categories: { name_ar: string; slug: string } | null;
+      sellers: { business_name: string; whatsapp_number: string; slug: string } | null;
+      listing_images: { storage_path: string; is_primary: boolean; sort_order: number }[];
+    }>();
 
   if (!listing) {
     notFound();
