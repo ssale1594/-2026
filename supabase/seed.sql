@@ -4,4 +4,5 @@ insert into categories (name_ar, slug, listing_type, sort_order) values
   ('أسر منتجة', 'home-producers', 'product', 2),
   ('خدمات', 'services', 'service', 3),
   ('عقار', 'real-estate', 'real_estate', 4),
-  ('سوق مستعمل', 'used-items', 'used_item', 5);
+  ('سوق مستعمل', 'used-items', 'used_item', 5)
+on conflict (slug) do nothing;
