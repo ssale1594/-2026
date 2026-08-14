@@ -34,9 +34,17 @@ export default async function DashboardPage() {
           <Link href="/" className="text-lg font-bold">
             {siteName}
           </Link>
-          <span className="text-sm text-black/60 dark:text-white/60">
-            {seller.business_name}
-          </span>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/dashboard/subscription"
+              className="text-sm text-black/60 dark:text-white/60 hover:underline"
+            >
+              الاشتراك
+            </Link>
+            <span className="text-sm text-black/60 dark:text-white/60">
+              {seller.business_name}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -56,9 +64,12 @@ export default async function DashboardPage() {
             </p>
           </div>
           {reachedLimit ? (
-            <span className="text-sm text-black/60 dark:text-white/60">
+            <Link
+              href="/dashboard/subscription"
+              className="text-sm text-blue-600 hover:underline"
+            >
               وصلت الحد المجاني — اشترك لإضافة المزيد
-            </span>
+            </Link>
           ) : (
             <Link
               href="/dashboard/listings/new"
