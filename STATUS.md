@@ -8,6 +8,23 @@
 (build كامل، `npm run dev`، وسكرين شات حقيقي عبر Playwright للرئيسية وصفحة فئة وتسجيل
 الدخول، زائد اختبار بحث تفاعلي). **صفر أخطاء TypeScript، صفر أخطاء كونسول.**
 
+## 🚀 النشر (2026-08-15)
+
+الموقع منشور فعليًا على Vercel: **https://2026-opal-nine.vercel.app**
+
+- ربط GitHub↔Vercel: كل push لـ`main` يشغّل نشر جديد تلقائيًا
+- أول نشر فشل بخطأ 500 (Application error) — السبب: متغيرات البيئة اللي اتضافت من لوحة
+  Vercel وقت الاستيراد الأولي **ما اتحفظت فعليًا** (`vercel env ls production` رجعت "No
+  Environment Variables found" رغم إنها كانت تظهر بالفورم). انحلّت بإضافتها من جديد عبر
+  Vercel CLI مباشرة (`vercel env add ... production`)
+- متغيرات البيئة المضبوطة بالإنتاج حاليًا: `NEXT_PUBLIC_SUPABASE_URL`،
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY`، `NEXT_PUBLIC_SITE_URL`، `INTERACTION_HASH_SECRET`
+  (قيمة منفصلة عن المحلي، ولّدت خصيصًا للإنتاج)
+- ⚠️ **`SUPABASE_SERVICE_ROLE_KEY` لسا فاضي بالإنتاج** — لازم تجيبه من Supabase Dashboard
+  (Project Settings → API → service_role) وتضيفه، وإلا لوحة الأدمن ونظام الدفع (لما يفعّل)
+  ما راح يشتغلوا بالموقع المنشور
+- `TAP_SECRET_KEY`/`TAP_WEBHOOK_SECRET` متروكين فاضيين عمدًا — مؤجّلين حسب قرارك
+
 ## خطوات أول جلسة على أي جهاز جديد
 
 1. `git pull origin main`
