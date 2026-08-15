@@ -72,11 +72,18 @@ export async function archiveListing(listingId: string) {
   const seller = await requireSeller();
   const supabase = await createClient();
 
-  await supabase
+  const { error } = await supabase
     .from("listings")
     .update({ status: "archived" })
     .eq("id", listingId)
     .eq("seller_id", seller.id);
+
+  // Swallowing this made a rejected archive look identical to a successful one:
+  // the page revalidated and the listing was simply still there, with nothing
+  // telling the seller why.
+  if (error) {
+    throw new Error("ما قدرنا نأرشف الإعلان — جرّب مرة ثانية.");
+  }
 
   revalidatePath("/dashboard");
 }

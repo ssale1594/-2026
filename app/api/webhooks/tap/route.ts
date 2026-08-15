@@ -31,6 +31,23 @@ export async function POST(request: Request) {
 
   const supabase = createServiceRoleClient();
 
+  // Look the payment up BEFORE claiming the idempotency key. Claiming it first
+  // meant a webhook that arrived before startCheckout's payments insert had
+  // committed (the Tap charge is created a few hundred ms earlier) burned the
+  // event id on a 404 — Tap's retry then hit the unique violation, was answered
+  // "duplicate", and the subscription stayed pending forever despite a real
+  // payment. Returning 404 without an event row keeps the retry meaningful.
+  const { data: payment } = await supabase
+    .from("payments")
+    .select("id, subscription_id, seller_id")
+    .eq("provider", "tap")
+    .eq("provider_payment_id", chargeId)
+    .single();
+
+  if (!payment) {
+    return NextResponse.json({ error: "payment not found" }, { status: 404 });
+  }
+
   // Idempotency (TECH.md §7): a single charge legitimately produces multiple
   // webhook deliveries with *different* statuses (e.g. INITIATED then
   // CAPTURED) — keying event_id on chargeId alone made the first delivery
@@ -50,15 +67,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: eventInsertError.message }, { status: 500 });
   }
 
-  const { data: payment } = await supabase
-    .from("payments")
-    .select("id, subscription_id, seller_id")
-    .eq("provider", "tap")
-    .eq("provider_payment_id", chargeId)
-    .single();
-
-  if (!payment) {
-    return NextResponse.json({ error: "payment not found" }, { status: 404 });
+  // Any failure from here on must release the idempotency key, otherwise the
+  // retry Tap sends is swallowed as a duplicate and the state never converges.
+  async function releaseEventKey() {
+    await supabase
+      .from("payment_events")
+      .delete()
+      .eq("provider", "tap")
+      .eq("event_id", eventId);
   }
 
   if (status === "CAPTURED") {
@@ -66,13 +82,18 @@ export async function POST(request: Request) {
     const periodEnd = new Date(now);
     periodEnd.setMonth(periodEnd.getMonth() + 1);
 
-    await supabase
+    const { error: paymentError } = await supabase
       .from("payments")
       .update({ status: "paid", paid_at: now.toISOString() })
       .eq("id", payment.id);
 
+    if (paymentError) {
+      await releaseEventKey();
+      return NextResponse.json({ error: paymentError.message }, { status: 500 });
+    }
+
     if (payment.subscription_id) {
-      await supabase
+      const { error: subscriptionError } = await supabase
         .from("subscriptions")
         .update({
           status: "active",
@@ -80,15 +101,41 @@ export async function POST(request: Request) {
           current_period_end: periodEnd.toISOString(),
         })
         .eq("id", payment.subscription_id);
+
+      // The payment is already marked paid; leaving the subscription inactive
+      // is the worst outcome here, so surface a 500 and let Tap retry.
+      if (subscriptionError) {
+        await releaseEventKey();
+        return NextResponse.json(
+          { error: subscriptionError.message },
+          { status: 500 }
+        );
+      }
     }
   } else if (["FAILED", "DECLINED", "CANCELLED"].includes(status)) {
-    await supabase.from("payments").update({ status: "failed" }).eq("id", payment.id);
+    const { error: paymentError } = await supabase
+      .from("payments")
+      .update({ status: "failed" })
+      .eq("id", payment.id);
+
+    if (paymentError) {
+      await releaseEventKey();
+      return NextResponse.json({ error: paymentError.message }, { status: 500 });
+    }
 
     if (payment.subscription_id) {
-      await supabase
+      const { error: subscriptionError } = await supabase
         .from("subscriptions")
         .update({ status: "cancelled" })
         .eq("id", payment.subscription_id);
+
+      if (subscriptionError) {
+        await releaseEventKey();
+        return NextResponse.json(
+          { error: subscriptionError.message },
+          { status: 500 }
+        );
+      }
     }
   }
 

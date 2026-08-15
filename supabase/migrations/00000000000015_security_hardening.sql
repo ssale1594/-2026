@@ -106,7 +106,18 @@ create policy "payments_insert_own" on payments for insert with check (
 -- and break /listing/[slug] (.single() errors on 2 rows -> 404 for both).
 -- ============================================================
 
-alter table listings add constraint listings_slug_key unique (slug);
+-- Guarded so re-running this file is safe: Supabase's SQL Editor autocommits
+-- each statement, so a script that fails halfway leaves earlier statements
+-- applied and gets pasted again (STATUS.md lesson 5). A bare ADD CONSTRAINT
+-- would abort that re-run.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'listings_slug_key'
+  ) then
+    alter table listings add constraint listings_slug_key unique (slug);
+  end if;
+end $$;
 
 -- ============================================================
 -- 7. The 8-images-per-listing cap in image-actions.ts was a plain
