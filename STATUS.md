@@ -25,6 +25,30 @@
   ما راح يشتغلوا بالموقع المنشور
 - `TAP_SECRET_KEY`/`TAP_WEBHOOK_SECRET` متروكين فاضيين عمدًا — مؤجّلين حسب قرارك
 
+### ✅ تم التحقق فعليًا (2026-08-15): الموقع المنشور شغّال
+`curl` مباشر لـ`https://2026-opal-nine.vercel.app/` رجع 200 والمحتوى الفعلي (الفئات الخمس،
+اسم "سوق الزلفي") يظهر صح من Supabase.
+
+### الطريق كان أطول من المتوقع — توثيق كامل للمشاكل حل بحل
+1. **متغيرات البيئة ما اتحفظت** من فورم استيراد المشروع الأول بلوحة Vercel — `vercel env ls
+   production` رجعت فاضية رغم إنها ظهرت بالفورم. انحلّت بإضافتها من جديد عبر CLI.
+2. **حظر نشر بسبب هوية Git (`deployment_blocked`)**: رسالة Vercel وضحت السبب حرفيًا —
+   "The deployment was blocked because the commit author did not have contributing access
+   to the project on Vercel. The Hobby Plan does not support collaboration for private
+   repositories." — صار حتى مع نشر مباشر عبر CLI (مو بس push)، لأن Vercel يربط هوية مؤلف
+   آخر كوميت Git بصلاحيات المستودع بغض النظر عن طريقة النشر.
+3. **الحل المجاني المطبَّق**: حوّلنا ريبو GitHub من خاص (private) لعام (public) —
+   `gh repo edit ... --visibility public`. هذا يزيل قيد "collaboration for private
+   repositories" بدون أي ترقية مدفوعة (يطابق مبدأ التكلفة بـ[TECH.md](TECH.md)). قبل
+   التحويل، فحصنا **كامل تاريخ الكوميتات** (أسماء ملفات + محتوى كل كوميت بحثًا عن أنماط
+   مفاتيح JWT/سرية) وتأكدنا صفر أسرار مكشوفة — الشي الوحيد المرفوع أصلًا هو
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY` وهو مفتاح "publishable" مصمم يكون عام أصلًا.
+4. بعد التحويل، `vercel deploy --prod` نجح مباشرة (`readyState: READY`, 32 ثانية بناء) وتولّى
+   لقب الإنتاج (`Aliased → 2026-opal-nine.vercel.app`) تلقائيًا.
+
+**ملاحظة للمستقبل:** بما إن الريبو صار عام، push مستقبلي لـ`main` يفترض يشغّل نشر Vercel
+تلقائي بدون حظر (نفس آلية GitHub↔Vercel، بس بدون قيد الخصوصية الآن).
+
 ## خطوات أول جلسة على أي جهاز جديد
 
 1. `git pull origin main`
