@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSeller } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { siteName } from "@/lib/seo";
+import DashboardHeader from "./dashboard-header";
 import { archiveListing } from "./listings/[id]/edit/actions";
 import ArchiveButton from "./archive-button";
 
@@ -25,28 +25,25 @@ export default async function DashboardPage() {
     .eq("seller_id", seller.id)
     .order("created_at", { ascending: false });
 
-  const reachedLimit = seller.active_listings_count >= seller.free_listing_limit;
+  // Mirrors can_create_listing() (supabase/migrations/00000000000001_initial_schema.sql):
+  // an active subscription lifts the free-tier cap entirely, so the UI gate
+  // has to check for one too — otherwise a paying seller who's past the free
+  // count sees the "subscribe" dead-end even though RLS would let them post.
+  const { data: activeSubscription } = await supabase
+    .from("subscriptions")
+    .select("id")
+    .eq("seller_id", seller.id)
+    .eq("status", "active")
+    .gt("current_period_end", new Date().toISOString())
+    .maybeSingle();
+
+  const reachedLimit =
+    !activeSubscription &&
+    seller.active_listings_count >= seller.free_listing_limit;
 
   return (
     <div className="min-h-screen font-sans">
-      <header className="border-b border-black/[.08] dark:border-white/[.145]">
-        <div className="mx-auto max-w-5xl px-4 py-5 flex items-center justify-between">
-          <Link href="/" className="text-lg font-bold">
-            {siteName}
-          </Link>
-          <div className="flex items-center gap-4">
-            <Link
-              href="/dashboard/subscription"
-              className="text-sm text-black/60 dark:text-white/60 hover:underline"
-            >
-              الاشتراك
-            </Link>
-            <span className="text-sm text-black/60 dark:text-white/60">
-              {seller.business_name}
-            </span>
-          </div>
-        </div>
-      </header>
+      <DashboardHeader sellerName={seller.business_name} />
 
       <main className="mx-auto max-w-5xl px-4 py-10">
         {seller.verification_status !== "approved" && (

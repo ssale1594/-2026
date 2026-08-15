@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { requireSeller } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { siteName } from "@/lib/seo";
+import DashboardHeader from "../dashboard-header";
 import { startCheckout } from "./actions";
 
 export default async function SubscriptionPage() {
@@ -24,19 +23,7 @@ export default async function SubscriptionPage() {
 
   return (
     <div className="min-h-screen font-sans">
-      <header className="border-b border-black/[.08] dark:border-white/[.145]">
-        <div className="mx-auto max-w-5xl px-4 py-5 flex items-center justify-between">
-          <Link href="/" className="text-lg font-bold">
-            {siteName}
-          </Link>
-          <Link
-            href="/dashboard"
-            className="text-sm text-black/60 dark:text-white/60"
-          >
-            رجوع للوحة
-          </Link>
-        </div>
-      </header>
+      <DashboardHeader backHref="/dashboard" backLabel="رجوع للوحة" />
 
       <main className="mx-auto max-w-lg px-4 py-10">
         <h1 className="text-xl font-semibold mb-6">الاشتراك</h1>

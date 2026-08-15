@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { requireAdmin } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import AdminHeader from "../admin-header";
 import { setSellerVerification } from "../actions";
 import ReviewButtons from "../review-buttons";
 
@@ -16,17 +16,7 @@ export default async function AdminSellersPage() {
 
   return (
     <div className="min-h-screen font-sans">
-      <header className="border-b border-black/[.08] dark:border-white/[.145]">
-        <div className="mx-auto max-w-5xl px-4 py-5 flex items-center justify-between">
-          <span className="text-lg font-bold">لوحة الإدارة</span>
-          <nav className="flex gap-4 text-sm">
-            <span>البائعون</span>
-            <Link href="/admin/listings" className="text-black/60 dark:text-white/60">
-              الإعلانات
-            </Link>
-          </nav>
-        </div>
-      </header>
+      <AdminHeader active="sellers" />
 
       <main className="mx-auto max-w-5xl px-4 py-10">
         <h1 className="text-xl font-semibold mb-6">بائعون بانتظار المراجعة</h1>

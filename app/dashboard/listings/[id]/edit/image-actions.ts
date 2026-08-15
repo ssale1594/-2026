@@ -41,7 +41,7 @@ export async function addListingImage(listingId: string, storagePath: string) {
     sort_order: count ?? 0,
   });
 
-  if (error) throw error;
+  if (error) throw new Error(error.message);
   revalidatePath(`/dashboard/listings/${listingId}/edit`);
 }
 
@@ -53,8 +53,12 @@ export async function deleteListingImage(
   const seller = await requireSeller();
   const supabase = await assertOwnsListing(seller.id, listingId);
 
-  await supabase.from("listing_images").delete().eq("id", imageId);
-  await supabase.storage.from("listing-images").remove([storagePath]);
+  const { error } = await supabase.from("listing_images").delete().eq("id", imageId);
+  // Only remove the storage object once the DB row is confirmed gone — otherwise
+  // a failed DB delete leaves listing_images pointing at a missing file.
+  if (!error) {
+    await supabase.storage.from("listing-images").remove([storagePath]);
+  }
 
   revalidatePath(`/dashboard/listings/${listingId}/edit`);
 }

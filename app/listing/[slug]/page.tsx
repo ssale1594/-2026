@@ -1,9 +1,9 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import { pageTitle, siteName } from "@/lib/seo";
 import { listingImageUrl } from "@/lib/storage";
+import { getListingBySlug } from "@/lib/data/listings";
 import WhatsappButton from "./whatsapp-button";
 import ViewTracker from "./view-tracker";
 
@@ -13,18 +13,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const supabase = await createClient();
-
-  const { data: listing } = await supabase
-    .from("listings")
-    .select("title, description, sellers(business_name)")
-    .eq("slug", slug)
-    .eq("status", "published")
-    .single<{
-      title: string;
-      description: string | null;
-      sellers: { business_name: string } | null;
-    }>();
+  const listing = await getListingBySlug(slug);
 
   if (!listing) {
     return { title: pageTitle("إعلان غير موجود") };
@@ -48,25 +37,7 @@ export default async function ListingPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const supabase = await createClient();
-
-  const { data: listing } = await supabase
-    .from("listings")
-    .select(
-      "id, title, description, price, price_negotiable, categories(name_ar, slug), sellers(business_name, whatsapp_number, slug), listing_images(storage_path, is_primary, sort_order)"
-    )
-    .eq("slug", slug)
-    .eq("status", "published")
-    .single<{
-      id: string;
-      title: string;
-      description: string | null;
-      price: number | null;
-      price_negotiable: boolean;
-      categories: { name_ar: string; slug: string } | null;
-      sellers: { business_name: string; whatsapp_number: string; slug: string } | null;
-      listing_images: { storage_path: string; is_primary: boolean; sort_order: number }[];
-    }>();
+  const listing = await getListingBySlug(slug);
 
   if (!listing) {
     notFound();

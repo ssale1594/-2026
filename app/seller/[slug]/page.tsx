@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { pageTitle, siteName } from "@/lib/seo";
+import { getSellerBySlug } from "@/lib/data/sellers";
 
 export async function generateMetadata({
   params,
@@ -10,14 +11,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const supabase = await createClient();
-
-  const { data: seller } = await supabase
-    .from("sellers")
-    .select("business_name, description")
-    .eq("slug", slug)
-    .eq("verification_status", "approved")
-    .single();
+  const seller = await getSellerBySlug(slug);
 
   if (!seller) {
     return { title: pageTitle("بائع غير موجود") };
@@ -37,19 +31,13 @@ export default async function SellerPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const supabase = await createClient();
-
-  const { data: seller } = await supabase
-    .from("sellers")
-    .select("id, business_name, business_type, description, whatsapp_number")
-    .eq("slug", slug)
-    .eq("verification_status", "approved")
-    .single();
+  const seller = await getSellerBySlug(slug);
 
   if (!seller) {
     notFound();
   }
 
+  const supabase = await createClient();
   const { data: listings } = await supabase
     .from("listings")
     .select("id, title, slug, price, price_negotiable")

@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { siteName } from "@/lib/seo";
+import DashboardHeader from "../dashboard-header";
 import SetupForm from "./setup-form";
 
 export default async function SetupPage() {
@@ -21,13 +20,7 @@ export default async function SetupPage() {
 
   return (
     <div className="min-h-screen font-sans">
-      <header className="border-b border-black/[.08] dark:border-white/[.145]">
-        <div className="mx-auto max-w-5xl px-4 py-5">
-          <Link href="/" className="text-lg font-bold">
-            {siteName}
-          </Link>
-        </div>
-      </header>
+      <DashboardHeader />
 
       <main className="mx-auto max-w-lg px-4 py-10">
         <h1 className="text-xl font-semibold mb-2">بيانات نشاطك</h1>

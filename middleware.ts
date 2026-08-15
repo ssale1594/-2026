@@ -34,8 +34,10 @@ export async function middleware(request: NextRequest) {
   return response;
 }
 
+// Narrowed to the sections that actually need a refreshed session cookie —
+// public browsing (/, /category, /listing, /seller, /search, sitemap.xml,
+// robots.txt) is most of this app's traffic and doesn't touch auth state, so
+// it no longer pays a Supabase Auth network round trip per request.
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
+  matcher: ["/dashboard/:path*", "/admin/:path*", "/login", "/auth/:path*"],
 };

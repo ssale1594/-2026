@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { pageTitle, siteName } from "@/lib/seo";
 import { listingImageUrl } from "@/lib/storage";
+import { getCategoryBySlug } from "@/lib/data/categories";
 
 export async function generateMetadata({
   params,
@@ -11,14 +12,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const supabase = await createClient();
-
-  const { data: category } = await supabase
-    .from("categories")
-    .select("name_ar")
-    .eq("slug", slug)
-    .eq("is_active", true)
-    .single();
+  const category = await getCategoryBySlug(slug);
 
   if (!category) {
     return { title: pageTitle("فئة غير موجودة") };
@@ -36,19 +30,13 @@ export default async function CategoryPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const supabase = await createClient();
-
-  const { data: category } = await supabase
-    .from("categories")
-    .select("id, name_ar, slug")
-    .eq("slug", slug)
-    .eq("is_active", true)
-    .single();
+  const category = await getCategoryBySlug(slug);
 
   if (!category) {
     notFound();
   }
 
+  const supabase = await createClient();
   const { data: listings } = await supabase
     .from("listings")
     .select(

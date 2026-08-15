@@ -31,12 +31,16 @@ export async function POST(request: Request) {
 
   const supabase = createServiceRoleClient();
 
-  // Idempotency (TECH.md §7): if this event_id was already processed, return
-  // 200 without repeating the side effects — Tap may deliver the same webhook
-  // more than once.
+  // Idempotency (TECH.md §7): a single charge legitimately produces multiple
+  // webhook deliveries with *different* statuses (e.g. INITIATED then
+  // CAPTURED) — keying event_id on chargeId alone made the first delivery
+  // "claim" that id and silently swallow every later status change,
+  // including the real CAPTURED one. Keying on chargeId+status dedupes only
+  // true repeat deliveries of the same event.
+  const eventId = `${chargeId}:${status}`;
   const { error: eventInsertError } = await supabase
     .from("payment_events")
-    .insert({ provider: "tap", event_id: chargeId, event_type: status });
+    .insert({ provider: "tap", event_id: eventId, event_type: status });
 
   if (eventInsertError) {
     // unique_violation on (provider, event_id) means we've already handled this one.
