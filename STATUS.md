@@ -59,8 +59,33 @@
 | 10 | `daily_listing_limit` | `can_create_listing_today` — حد 3 إعلانات جديدة باليوم |
 | 11 | `grant_base_privileges` | GRANT أساسي لـanon/authenticated (كان ناقص افتراضيًا بالمشروع) |
 | 12 | `public_read_reference_tables` | RLS + سياسة قراءة عامة لـcategories/regions/neighborhoods/plans |
+| 13 | `seed_plan` | زرع خطة الاشتراك (99 ر.س/شهر، مؤقت) |
+| 14 | `zulfi_neighborhoods` | 26 حي حقيقي بالزلفي (بيانات من صاحب المشروع) |
+| 15 | `security_hardening` | إصلاح مراجعة الكود الشاملة — تفاصيل تحت |
 
 *(رقم 8 محذوف عمدًا — كان بيانات أحياء مخترعة، اتشال قبل التطبيق)*
+
+## 🔍 مراجعة كود شاملة (2026-08-15)
+
+راجعت 8 وكلاء متخصصين كل الكود من بداية المشروع (`git diff` من أول commit). لقوا مشاكل حقيقية،
+كلها انصلحت بـmigration 15 + تعديلات كود مرافقة:
+
+**أمنية حرجة (كانت مفتوحة فعليًا بالإنتاج):**
+- دوال `SECURITY DEFINER` (`is_admin`, `can_create_listing`, وغيرها) بدون `search_path` ثابت —
+  ثغرة انتحال جدول مؤقت (temp table shadowing) تتجاوز فحص الأدمن والحد اليومي بالكامل
+- `listings_update_own` و`sellers_update_own` بدون `WITH CHECK` — أي بائع يقدر يعتمد حسابه
+  بنفسه أو ينشر إعلانه مباشرة عبر Supabase client بدون مراجعة أدمن
+- `GRANT ALL` (migration 11) كان يشمل `TRUNCATE` غير الخاضع لـRLS إطلاقًا — ضُيّق لصلاحيات محددة
+
+**تصحيحية عالية:**
+- نظام الدفع (Tap) كامل كان **ما يقدر يشتغل أبدًا** — ما فيه سياسة INSERT على `subscriptions`/`payments`
+- مفتاح idempotency بـwebhook Tap كان يبلع أول webhook حقيقي (`CAPTURED`) كـ"مكرر" ولا يفعّل الاشتراك
+- `listings.slug` بدون unique constraint، وحد الصور الثماني بدون قفل ذري (سباق حالة ممكن)
+
+**تبسيط وكفاءة:** توحيد استعلامات `generateMetadata` المكررة، دمج مسارَي التفاعل المتطابقين،
+هيدر مشترك للوحتين (كان مكرر بـ6 صفحات)، تضييق `middleware` عشان ما يستدعي Auth بالصفحات العامة.
+
+راجع commit `a6e7b9d` للتفاصيل الكاملة.
 
 ### تنظيف
 - [x] توحيد اسم الموقع بمصدر واحد (`lib/seo.ts`) بدل تكراره بـ13 مكان
