@@ -4,8 +4,9 @@
 -- هذا الملف مولّد آليًا بدمج ملفات supabase/migrations/ من 17 إلى 23 بالترتيب.
 -- الترتيب مهم: 21 (need_requests) لازم قبل 22 لأن تقرير نبض الزلفي يقرأ منه.
 --
--- كلها idempotent (تتحمل إعادة التشغيل) ما عدا ملاحظة واحدة: بيانات العرض
--- التجريبية (17) تتخطى نفسها تلقائيًا لو سبق تشغيلها.
+-- كلها idempotent (تتحمل إعادة التشغيل بأمان): الجداول بـif not exists،
+-- السياسات مسبوقة بـdrop if exists، وبيانات العرض التجريبية (17) تتخطى
+-- نفسها لو سبق تشغيلها.
 --
 -- بعد التشغيل الناجح، حدّث جدول الهجرات بـSTATUS.md من ⚠️ غير مطبّقة إلى ✅.
 -- ============================================================================
@@ -119,7 +120,7 @@ end $$;
 -- most home producers won't discover the platform on their own, so the
 -- community needs a channel to bring them in.
 
-create table referrals (
+create table if not exists referrals (
   id bigserial primary key,
   referrer_name text,
   business_name text not null,
@@ -139,8 +140,10 @@ grant insert on referrals to anon;
 
 -- Anyone (including anonymous visitors) can submit a referral; no read access
 -- outside admin — same "insert-only from clients" shape as contact_clicks.
+drop policy if exists "referrals_insert_public" on referrals;
 create policy "referrals_insert_public" on referrals for insert with check (true);
 
+drop policy if exists "admin_all_referrals" on referrals;
 create policy "admin_all_referrals" on referrals for all using (
   is_admin()
 );
