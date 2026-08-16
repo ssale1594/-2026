@@ -7,15 +7,15 @@ import { createClient } from "@/lib/supabase/server";
 async function logAdminAction(
   adminId: string,
   action: string,
-  targetType: "seller" | "listing",
-  targetId: string
+  targetType: "seller" | "listing" | "referral",
+  targetId: string | number
 ) {
   const supabase = await createClient();
   await supabase.from("admin_actions").insert({
     admin_id: adminId,
     action,
     target_type: targetType,
-    target_id: targetId,
+    target_id: String(targetId),
   });
 }
 
@@ -52,4 +52,17 @@ export async function setListingStatus(
 
   await logAdminAction(admin.id, `listing_${status}`, "listing", listingId);
   revalidatePath("/admin/listings");
+}
+
+export async function setReferralStatus(
+  referralId: number,
+  status: "contacted" | "dismissed"
+) {
+  const admin = await requireAdmin();
+  const supabase = await createClient();
+
+  await supabase.from("referrals").update({ status }).eq("id", referralId);
+
+  await logAdminAction(admin.id, `referral_${status}`, "referral", referralId);
+  revalidatePath("/admin/referrals");
 }

@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { pageTitle, siteName } from "@/lib/seo";
 import { listingImageUrl } from "@/lib/storage";
 import { getListingBySlug } from "@/lib/data/listings";
+import { relativeTimeAr } from "@/lib/relative-time";
 import WhatsappButton from "./whatsapp-button";
 import ViewTracker from "./view-tracker";
 
@@ -85,7 +86,13 @@ export default async function ListingPage({
           </div>
         )}
 
-        <h1 className="text-2xl font-semibold mb-2">{listing.title}</h1>
+        <h1 className="text-2xl font-semibold mb-1">{listing.title}</h1>
+
+        <div className="text-xs text-black/40 dark:text-white/40 mb-2">
+          آخر تحديث: {relativeTimeAr(listing.updated_at)} · شوهد {listing.view_count} مرة
+          {listing.contact_click_count > 0 &&
+            ` · تواصل معه ${listing.contact_click_count} مرة`}
+        </div>
 
         {listing.price != null && (
           <div className="text-lg mb-4">

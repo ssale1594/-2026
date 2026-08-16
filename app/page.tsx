@@ -21,13 +21,22 @@ export default async function Home() {
       <header className="border-b border-black/[.08] dark:border-white/[.145]">
         <div className="mx-auto max-w-5xl px-4 py-5 flex items-center justify-between">
           <span className="text-lg font-bold">{siteName}</span>
-          <nav className="text-sm text-black/60 dark:text-white/60">
-            دليل محلات، أسر منتجة، خدمات، عقار، ومستعمل
+          <nav className="flex items-center gap-4 text-sm text-black/60 dark:text-white/60">
+            <Link href="/whats-new" className="hover:underline">
+              وش الجديد؟
+            </Link>
+            <Link href="/refer-a-business" className="hover:underline">
+              رشّح مشروعًا
+            </Link>
           </nav>
         </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-10">
+        <p className="text-sm text-black/60 dark:text-white/60 mb-8">
+          دليل محلات، أسر منتجة، خدمات، عقار، ومستعمل بالزلفي
+        </p>
+
         <div className="mb-10">
           <SearchBox />
         </div>
@@ -59,6 +68,20 @@ export default async function Home() {
           </ul>
         )}
       </main>
+
+      <footer className="border-t border-black/[.08] dark:border-white/[.145] mt-10">
+        <div className="mx-auto max-w-5xl px-4 py-6 flex gap-4 text-xs text-black/40 dark:text-white/40">
+          <Link href="/privacy" className="hover:underline">
+            سياسة الخصوصية
+          </Link>
+          <Link href="/terms" className="hover:underline">
+            الشروط والأحكام
+          </Link>
+          <Link href="/refund" className="hover:underline">
+            سياسة الاسترجاع
+          </Link>
+        </div>
+      </footer>
     </div>
   );
 }

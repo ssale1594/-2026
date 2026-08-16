@@ -4,7 +4,7 @@ import Link from "next/link";
 export default function AdminHeader({
   active,
 }: {
-  active: "sellers" | "listings";
+  active: "sellers" | "listings" | "referrals";
 }) {
   return (
     <header className="border-b border-black/[.08] dark:border-white/[.145]">
@@ -23,6 +23,13 @@ export default function AdminHeader({
           ) : (
             <Link href="/admin/listings" className="text-black/60 dark:text-white/60">
               الإعلانات
+            </Link>
+          )}
+          {active === "referrals" ? (
+            <span>الترشيحات</span>
+          ) : (
+            <Link href="/admin/referrals" className="text-black/60 dark:text-white/60">
+              الترشيحات
             </Link>
           )}
         </nav>
