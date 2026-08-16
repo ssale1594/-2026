@@ -33,6 +33,14 @@ export default async function SearchPage({
     const supabase = await createClient();
     const { data } = await supabase.rpc("search_listings", { p_query: query });
     results = (data as SearchResult[]) ?? [];
+
+    // Feeds the market-pulse reports (migration 22). Stores the query text and
+    // hit count only — no visitor identity. A zero-result search here is the
+    // single most valuable row in the table: it is unmet local demand.
+    await supabase.from("search_log").insert({
+      normalized_query: query.toLowerCase(),
+      results_count: results.length,
+    });
   }
 
   return (

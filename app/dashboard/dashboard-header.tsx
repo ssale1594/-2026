@@ -34,6 +34,18 @@ export default function DashboardHeader({
           {sellerName && (
             <>
               <Link
+                href="/dashboard/needs"
+                className="text-sm text-black/60 dark:text-white/60 hover:underline"
+              >
+                الطلبات
+              </Link>
+              <Link
+                href="/dashboard/transactions"
+                className="text-sm text-black/60 dark:text-white/60 hover:underline"
+              >
+                التعاملات
+              </Link>
+              <Link
                 href="/dashboard/subscription"
                 className="text-sm text-black/60 dark:text-white/60 hover:underline"
               >

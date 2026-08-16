@@ -7,9 +7,10 @@ export const revalidate = 3600;
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const supabase = await createClient();
 
-  const [categories, neighborhoods, sellers, listings] = await Promise.all([
+  const [categories, neighborhoods, journeys, sellers, listings] = await Promise.all([
     supabase.from("categories").select("slug").eq("is_active", true),
     supabase.from("neighborhoods").select("slug"),
+    supabase.from("journeys").select("slug").eq("is_active", true),
     supabase
       .from("sellers")
       .select("slug, updated_at")
@@ -31,6 +32,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: `${siteUrl}/whats-new`,
       changeFrequency: "daily",
       priority: 0.6,
+    },
+    {
+      url: `${siteUrl}/needs`,
+      changeFrequency: "daily",
+      priority: 0.7,
+    },
+    {
+      url: `${siteUrl}/needs/new`,
+      changeFrequency: "monthly",
+      priority: 0.5,
     },
     {
       url: `${siteUrl}/refer-a-business`,
@@ -60,6 +71,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...(neighborhoods.data ?? []).map((neighborhood) => ({
       url: `${siteUrl}/neighborhood/${neighborhood.slug}`,
       changeFrequency: "daily" as const,
+      priority: 0.7,
+    })),
+    ...(journeys.data ?? []).map((journey) => ({
+      url: `${siteUrl}/journey/${journey.slug}`,
+      changeFrequency: "weekly" as const,
       priority: 0.7,
     })),
     ...(sellers.data ?? []).map((seller) => ({

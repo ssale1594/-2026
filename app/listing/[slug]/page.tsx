@@ -5,8 +5,10 @@ import { pageTitle, siteName } from "@/lib/seo";
 import { listingImageUrl } from "@/lib/storage";
 import { getListingBySlug } from "@/lib/data/listings";
 import { relativeTimeAr } from "@/lib/relative-time";
+import { createClient } from "@/lib/supabase/server";
 import WhatsappButton from "./whatsapp-button";
 import ViewTracker from "./view-tracker";
+import ClaimButton from "./claim-button";
 
 export async function generateMetadata({
   params,
@@ -47,6 +49,21 @@ export default async function ListingPage({
   const images = [...(listing.listing_images ?? [])].sort(
     (a, b) => a.sort_order - b.sort_order
   );
+
+  const supabase = await createClient();
+  const [
+    {
+      data: { user },
+    },
+    { data: ratingRows },
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    listing.sellers
+      ? supabase.rpc("seller_rating", { p_seller_id: listing.sellers.id })
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const rating = (ratingRows as { average: number | null; total: number }[] | null)?.[0];
 
   return (
     <div className="min-h-screen font-sans">
@@ -117,20 +134,32 @@ export default async function ListingPage({
         )}
 
         {listing.sellers && (
-          <div className="rounded-lg border border-black/[.08] dark:border-white/[.145] p-4 flex items-center justify-between">
-            <div>
-              <div className="font-medium">{listing.sellers.business_name}</div>
-              <Link
-                href={`/seller/${listing.sellers.slug}`}
-                className="text-sm text-black/60 dark:text-white/60 hover:underline"
-              >
-                عرض صفحة البائع
-              </Link>
+          <div className="rounded-lg border border-black/[.08] dark:border-white/[.145] p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">{listing.sellers.business_name}</div>
+                {rating && rating.total > 0 && (
+                  <div className="text-sm text-black/60 dark:text-white/60">
+                    ★ {rating.average} · {rating.total} تقييم موثّق
+                  </div>
+                )}
+                <Link
+                  href={`/seller/${listing.sellers.slug}`}
+                  className="text-sm text-black/60 dark:text-white/60 hover:underline"
+                >
+                  عرض صفحة البائع
+                </Link>
+              </div>
+              <WhatsappButton
+                listingId={listing.id}
+                whatsappNumber={listing.sellers.whatsapp_number}
+                listingTitle={listing.title}
+              />
             </div>
-            <WhatsappButton
+            <ClaimButton
               listingId={listing.id}
-              whatsappNumber={listing.sellers.whatsapp_number}
-              listingTitle={listing.title}
+              sellerId={listing.sellers.id}
+              isSignedIn={Boolean(user)}
             />
           </div>
         )}

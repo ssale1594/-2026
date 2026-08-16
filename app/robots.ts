@@ -7,7 +7,15 @@ export default function robots(): MetadataRoute.Robots {
       userAgent: "*",
       allow: "/",
       // TECH.md §8 — private areas and zero-value dynamic search pages stay out.
-      disallow: ["/dashboard", "/admin", "/api", "/auth", "/login", "/search"],
+      disallow: [
+        "/dashboard",
+        "/admin",
+        "/my",
+        "/api",
+        "/auth",
+        "/login",
+        "/search",
+      ],
     },
     sitemap: `${siteUrl}/sitemap.xml`,
   };

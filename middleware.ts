@@ -39,5 +39,11 @@ export async function middleware(request: NextRequest) {
 // robots.txt) is most of this app's traffic and doesn't touch auth state, so
 // it no longer pays a Supabase Auth network round trip per request.
 export const config = {
-  matcher: ["/dashboard/:path*", "/admin/:path*", "/login", "/auth/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/admin/:path*",
+    "/my/:path*",
+    "/login",
+    "/auth/:path*",
+  ],
 };

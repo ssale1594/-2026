@@ -15,12 +15,18 @@ create table referrals (
 
 alter table referrals enable row level security;
 
+-- Migration 15 narrowed the default privileges for new tables to SELECT-only for
+-- anon, so an RLS insert policy alone is not enough — anonymous visitors need an
+-- explicit table-level INSERT grant or every submission fails with "permission
+-- denied" before RLS is even consulted.
+grant insert on referrals to anon;
+
 -- Anyone (including anonymous visitors) can submit a referral; no read access
 -- outside admin — same "insert-only from clients" shape as contact_clicks.
 create policy "referrals_insert_public" on referrals for insert with check (true);
 
 create policy "admin_all_referrals" on referrals for all using (
-  exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+  is_admin()
 );
 
 -- admin_actions.target_id was uuid-only (fits seller/listing ids) and its check
