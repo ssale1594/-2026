@@ -1089,6 +1089,15 @@ returns void as $$
   values (p_user_id, p_type, p_title, p_body, p_link);
 $$ language sql security definer set search_path = public, pg_temp;
 
+-- CRITICAL: migration 11 granted EXECUTE on every routine in the schema to
+-- anon/authenticated, and migration 15 narrowed only table privileges — so
+-- without this revoke, any signed-in user could call notify() directly and
+-- plant an arbitrary notification, with an arbitrary link, in anyone else's
+-- feed. That is a ready-made phishing primitive. Only the trigger functions
+-- below need it, and they run as the owner, so revoking from the client roles
+-- costs nothing.
+revoke all on function notify(uuid, text, text, text, text) from anon, authenticated;
+
 -- ============================================================
 -- 1. Listing reviewed by an admin
 -- ============================================================
