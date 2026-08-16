@@ -8,6 +8,7 @@ export type ListingDetail = {
   price: number | null;
   price_negotiable: boolean;
   categories: { name_ar: string; slug: string } | null;
+  neighborhoods: { name_ar: string; slug: string } | null;
   sellers: { business_name: string; whatsapp_number: string; slug: string } | null;
   listing_images: { storage_path: string; is_primary: boolean; sort_order: number }[];
 };
@@ -21,7 +22,7 @@ export const getListingBySlug = cache(async (slug: string) => {
   const { data } = await supabase
     .from("listings")
     .select(
-      "id, title, description, price, price_negotiable, categories(name_ar, slug), sellers(business_name, whatsapp_number, slug), listing_images(storage_path, is_primary, sort_order)"
+      "id, title, description, price, price_negotiable, categories(name_ar, slug), neighborhoods(name_ar, slug), sellers(business_name, whatsapp_number, slug), listing_images(storage_path, is_primary, sort_order)"
     )
     .eq("slug", slug)
     .eq("status", "published")

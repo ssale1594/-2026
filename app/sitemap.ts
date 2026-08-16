@@ -7,8 +7,9 @@ export const revalidate = 3600;
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const supabase = await createClient();
 
-  const [categories, sellers, listings] = await Promise.all([
+  const [categories, neighborhoods, sellers, listings] = await Promise.all([
     supabase.from("categories").select("slug").eq("is_active", true),
+    supabase.from("neighborhoods").select("slug"),
     supabase
       .from("sellers")
       .select("slug, updated_at")
@@ -30,6 +31,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: `${siteUrl}/category/${category.slug}`,
       changeFrequency: "daily" as const,
       priority: 0.8,
+    })),
+    ...(neighborhoods.data ?? []).map((neighborhood) => ({
+      url: `${siteUrl}/neighborhood/${neighborhood.slug}`,
+      changeFrequency: "daily" as const,
+      priority: 0.7,
     })),
     ...(sellers.data ?? []).map((seller) => ({
       url: `${siteUrl}/seller/${seller.slug}`,

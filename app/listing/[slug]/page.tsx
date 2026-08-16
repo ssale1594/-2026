@@ -100,6 +100,15 @@ export default async function ListingPage({
           </p>
         )}
 
+        {listing.neighborhoods && (
+          <Link
+            href={`/neighborhood/${listing.neighborhoods.slug}`}
+            className="inline-block text-sm text-black/60 dark:text-white/60 hover:underline mb-6"
+          >
+            حي {listing.neighborhoods.name_ar}
+          </Link>
+        )}
+
         {listing.sellers && (
           <div className="rounded-lg border border-black/[.08] dark:border-white/[.145] p-4 flex items-center justify-between">
             <div>

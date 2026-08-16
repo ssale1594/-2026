@@ -13,6 +13,7 @@ type Listing = {
   title: string;
   description: string | null;
   category_id: number;
+  neighborhood_id: number | null;
   price: number | null;
   price_negotiable: boolean;
 };
@@ -20,9 +21,11 @@ type Listing = {
 export default function EditListingForm({
   listing,
   categories,
+  neighborhoods,
 }: {
   listing: Listing;
   categories: { id: number; name_ar: string }[];
+  neighborhoods: { id: number; name_ar: string }[];
 }) {
   const [state, formAction, isPending] = useActionState(
     updateListing.bind(null, listing.id),
@@ -53,6 +56,22 @@ export default function EditListingForm({
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.name_ar}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-sm">الحي — اختياري</span>
+        <select
+          name="neighborhoodId"
+          defaultValue={listing.neighborhood_id ?? ""}
+          className={fieldClass}
+        >
+          <option value="">بدون تحديد حي</option>
+          {neighborhoods.map((neighborhood) => (
+            <option key={neighborhood.id} value={neighborhood.id}>
+              {neighborhood.name_ar}
             </option>
           ))}
         </select>

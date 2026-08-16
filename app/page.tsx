@@ -2,14 +2,19 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { siteName } from "@/lib/seo";
 import SearchBox from "@/components/search-box";
+import NeighborhoodSelect from "@/components/neighborhood-select";
+import { getNeighborhoods } from "@/lib/data/neighborhoods";
 
 export default async function Home() {
   const supabase = await createClient();
-  const { data: categories } = await supabase
-    .from("categories")
-    .select("id, name_ar, slug")
-    .eq("is_active", true)
-    .order("sort_order");
+  const [{ data: categories }, neighborhoods] = await Promise.all([
+    supabase
+      .from("categories")
+      .select("id, name_ar, slug")
+      .eq("is_active", true)
+      .order("sort_order"),
+    getNeighborhoods(),
+  ]);
 
   return (
     <div className="min-h-screen font-sans">
@@ -26,6 +31,12 @@ export default async function Home() {
         <div className="mb-10">
           <SearchBox />
         </div>
+
+        {neighborhoods.length > 0 && (
+          <div className="mb-10">
+            <NeighborhoodSelect neighborhoods={neighborhoods} />
+          </div>
+        )}
 
         <h1 className="text-xl font-semibold mb-6">تصفح حسب الفئة</h1>
 

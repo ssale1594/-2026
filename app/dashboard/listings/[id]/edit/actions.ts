@@ -16,10 +16,15 @@ export async function updateListing(
   const seller = await requireSeller();
 
   const rawPrice = formData.get("price");
+  const rawNeighborhoodId = formData.get("neighborhoodId");
   const parsed = listingInputSchema.safeParse({
     title: formData.get("title"),
     description: formData.get("description") || undefined,
     categoryId: formData.get("categoryId"),
+    neighborhoodId:
+      rawNeighborhoodId === "" || rawNeighborhoodId === null
+        ? undefined
+        : rawNeighborhoodId,
     price: rawPrice === "" || rawPrice === null ? undefined : rawPrice,
     priceNegotiable: formData.get("priceNegotiable") === "on",
   });
@@ -47,6 +52,7 @@ export async function updateListing(
     .from("listings")
     .update({
       category_id: category.id,
+      neighborhood_id: parsed.data.neighborhoodId ?? null,
       listing_type: category.listing_type,
       title: parsed.data.title,
       description: parsed.data.description ?? null,
