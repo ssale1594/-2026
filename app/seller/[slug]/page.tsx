@@ -6,7 +6,9 @@ import { pageTitle, siteName } from "@/lib/seo";
 import { getSellerBySlug } from "@/lib/data/sellers";
 import { relativeTimeAr } from "@/lib/relative-time";
 import { getSellerTrust } from "@/lib/data/trust";
+import { getSellerActivity } from "@/lib/data/activity";
 import TrustBadge from "@/components/trust-badge";
+import ActivityIndicator from "@/components/activity-indicator";
 import VouchButton from "./vouch-button";
 
 export async function generateMetadata({
@@ -69,7 +71,12 @@ export default async function SellerPage({
       data: { user },
     },
     trust,
-  ] = await Promise.all([supabase.auth.getUser(), getSellerTrust(seller.id)]);
+    activity,
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    getSellerTrust(seller.id),
+    getSellerActivity(seller.id),
+  ]);
 
   // Only asked once we know there's a signed-in visitor who isn't the seller.
   const { data: existingVouch } =
@@ -101,6 +108,9 @@ export default async function SellerPage({
             <h1 className="text-2xl font-semibold">{seller.business_name}</h1>
             <div className="mt-2">
               <TrustBadge trust={trust} showDetail />
+            </div>
+            <div className="mt-1">
+              <ActivityIndicator activity={activity} />
             </div>
             {rating && rating.total > 0 && (
               <div className="text-sm text-black/60 dark:text-white/60 mt-1">

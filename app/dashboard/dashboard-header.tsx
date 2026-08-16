@@ -5,7 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 const SELLER_LINKS = [
   { href: "/dashboard/needs", label: "الطلبات" },
   { href: "/dashboard/offers", label: "عروضي" },
+  { href: "/dashboard/jobs", label: "وظائفي" },
   { href: "/dashboard/transactions", label: "التعاملات" },
+  { href: "/dashboard/referrals", label: "ادعُ جارك" },
   { href: "/dashboard/subscription", label: "الاشتراك" },
 ];
 

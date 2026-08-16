@@ -1,16 +1,16 @@
 -- ============================================================================
 -- الهجرات المعلّقة — الصقها كاملة مرة واحدة بـSQL Editor بلوحة Supabase
 -- ============================================================================
--- مولّد آليًا بدمج supabase/migrations/ من 17 إلى 28 بالترتيب.
+-- مولّد آليًا بدمج supabase/migrations/ من 17 إلى 33 بالترتيب.
 --
 -- الترتيب إلزامي — فيه اعتماديات حقيقية:
---   21 (need_requests) قبل 22، لأن تقرير نبض الزلفي يقرأ من جدول الطلبات
---   23 (transactions/reviews) و25 (vouches) قبل 27، لأن مستوى الثقة يحسب منهما
---   24 و25 و26 قبل 28، لأن الإشعارات تركّب triggers على offers وvouches وanswers
+--   21 (need_requests) قبل 22 و32، لأنهما يقرآن منه
+--   23 (transactions) و25 (vouches) قبل 27، لأن مستوى الثقة يحسب منهما
+--   24 و25 و26 قبل 28، لأن الإشعارات تركّب triggers عليها
+--   28 (notify) قبل 30 و31 و33، لأنها كلها تستدعي notify()
 --
--- كلها idempotent (تتحمل إعادة التشغيل بأمان): الجداول بـif not exists،
--- السياسات مسبوقة بـdrop if exists، والدوال بـcreate or replace، وبيانات
--- العرض التجريبية (17) تتخطى نفسها لو سبق تشغيلها.
+-- كلها idempotent: الجداول بـif not exists، السياسات مسبوقة بـdrop if exists،
+-- الأعمدة بـadd column if not exists، والدوال بـcreate or replace.
 --
 -- بعد التشغيل الناجح، حدّث جدول الهجرات بـSTATUS.md من ⚠️ غير مطبّقة إلى ✅.
 -- ============================================================================
@@ -1289,3 +1289,661 @@ returns bigint as $$
   select count(*) from notifications
   where user_id = auth.uid() and not is_read;
 $$ language sql stable security definer set search_path = public, pg_temp;
+
+-- ============================================================
+-- 00000000000029_events
+-- ============================================================
+
+-- تقويم فعاليات الزلفي (local events calendar) — PLAN.md §2.7, §11.3, §19.21.
+-- A reason to open the site with no intention to buy: bazaars, family markets,
+-- municipality activities, the weekly حراج. Community traffic that later walks
+-- past the commercial listings.
+--
+-- Anyone signed in may submit; an admin reviews before it shows. Past events
+-- disappear on their own through the RLS window rather than a cleanup job.
+
+create table if not exists events (
+  id bigserial primary key,
+  created_by uuid references profiles(id) on delete set null,
+  -- Optional: a seller can attach their business as the organizer.
+  organizer_seller_id uuid references sellers(id) on delete set null,
+  title text not null,
+  description text,
+  location_text text,
+  neighborhood_id int references neighborhoods(id),
+  starts_at timestamptz not null,
+  ends_at timestamptz,
+  status text not null default 'pending_review'
+    check (status in ('pending_review', 'published', 'rejected')),
+  created_at timestamptz default now(),
+  constraint events_period_valid check (ends_at is null or ends_at >= starts_at)
+);
+
+create index if not exists idx_events_upcoming
+  on events (status, starts_at);
+
+alter table events enable row level security;
+
+-- Public sees reviewed events that haven't finished yet. coalesce lets a
+-- single-moment event stay visible for the whole of its start day.
+drop policy if exists "events_select_public" on events;
+create policy "events_select_public" on events for select using (
+  status = 'published'
+  and coalesce(ends_at, starts_at + interval '1 day') > now()
+);
+
+drop policy if exists "events_select_own" on events;
+create policy "events_select_own" on events for select using (
+  created_by = auth.uid()
+);
+
+drop policy if exists "events_insert_own" on events;
+create policy "events_insert_own" on events for insert with check (
+  created_by = auth.uid() and status = 'pending_review'
+);
+
+-- status is the moderator's call only.
+revoke update (status, created_by) on events from authenticated;
+
+drop policy if exists "events_update_own" on events;
+create policy "events_update_own" on events for update
+  using (created_by = auth.uid())
+  with check (created_by = auth.uid());
+
+drop policy if exists "admin_all_events" on events;
+create policy "admin_all_events" on events for all using (is_admin());
+
+-- admin_actions logs event moderation too.
+do $$
+begin
+  if exists (select 1 from pg_constraint where conname = 'admin_actions_target_type_check') then
+    alter table admin_actions drop constraint admin_actions_target_type_check;
+  end if;
+
+  alter table admin_actions add constraint admin_actions_target_type_check
+    check (target_type in ('seller', 'listing', 'referral', 'offer', 'event', 'job'));
+end $$;
+
+-- ============================================================
+-- 00000000000030_local_jobs
+-- ============================================================
+
+-- وظائف محلية (local jobs) — PLAN.md §2.6. Shops in Al-Zulfi announce openings
+-- and residents apply through the platform. Reaches a group the marketplace
+-- otherwise misses entirely: people who aren't buying anything.
+--
+-- Applications carry a WhatsApp number rather than a CV upload: the whole
+-- platform's contact model is wa.me (TECH.md §4), and a file-upload pipeline
+-- for CVs would add storage cost and PII handling for no real gain here.
+
+create table if not exists jobs (
+  id bigserial primary key,
+  seller_id uuid references sellers(id) on delete cascade not null,
+  title text not null,
+  description text,
+  job_type text not null default 'full_time'
+    check (job_type in ('full_time', 'part_time', 'temporary')),
+  salary_text text,
+  neighborhood_id int references neighborhoods(id),
+  status text not null default 'pending_review'
+    check (status in ('pending_review', 'published', 'closed', 'rejected')),
+  expires_at timestamptz not null default (now() + interval '45 days'),
+  created_at timestamptz default now()
+);
+
+create index if not exists idx_jobs_live on jobs (status, expires_at, created_at desc);
+
+create table if not exists job_applications (
+  id bigserial primary key,
+  job_id bigint references jobs(id) on delete cascade not null,
+  applicant_id uuid references profiles(id) on delete cascade not null,
+  message text,
+  contact_whatsapp text not null,
+  created_at timestamptz default now(),
+  unique (job_id, applicant_id)
+);
+
+create index if not exists idx_job_applications_job on job_applications (job_id);
+
+alter table jobs enable row level security;
+alter table job_applications enable row level security;
+
+drop policy if exists "jobs_select_public" on jobs;
+create policy "jobs_select_public" on jobs for select using (
+  status = 'published' and expires_at > now()
+);
+
+drop policy if exists "jobs_select_own" on jobs;
+create policy "jobs_select_own" on jobs for select using (seller_id = auth.uid());
+
+drop policy if exists "jobs_insert_own" on jobs;
+create policy "jobs_insert_own" on jobs for insert with check (
+  seller_id = auth.uid()
+  and status = 'pending_review'
+  and exists (
+    select 1 from sellers s
+    where s.id = auth.uid() and s.verification_status = 'approved'
+  )
+);
+
+revoke update (seller_id) on jobs from authenticated;
+
+-- The seller may close their own posting, but publishing stays with the admin,
+-- so the WITH CHECK pins what a seller is allowed to move status *to*.
+drop policy if exists "jobs_update_own" on jobs;
+create policy "jobs_update_own" on jobs for update
+  using (seller_id = auth.uid())
+  with check (seller_id = auth.uid() and status in ('pending_review', 'closed'));
+
+drop policy if exists "admin_all_jobs" on jobs;
+create policy "admin_all_jobs" on jobs for all using (is_admin());
+
+-- Applications are private between applicant and the hiring seller.
+drop policy if exists "job_applications_select_own" on job_applications;
+create policy "job_applications_select_own" on job_applications for select using (
+  applicant_id = auth.uid()
+  or exists (select 1 from jobs j where j.id = job_id and j.seller_id = auth.uid())
+);
+
+drop policy if exists "job_applications_insert_own" on job_applications;
+create policy "job_applications_insert_own" on job_applications for insert with check (
+  applicant_id = auth.uid()
+  and exists (
+    select 1 from jobs j
+    where j.id = job_id and j.status = 'published' and j.expires_at > now()
+  )
+);
+
+drop policy if exists "admin_all_job_applications" on job_applications;
+create policy "admin_all_job_applications" on job_applications for all using (is_admin());
+
+-- Tell the hiring seller a new application landed (reuses the notification
+-- centre from migration 28).
+create or replace function notify_job_application()
+returns trigger as $$
+declare
+  v_seller uuid;
+  v_title text;
+begin
+  select seller_id, title into v_seller, v_title from jobs where id = new.job_id;
+
+  if v_seller is not null then
+    perform notify(
+      v_seller, 'job_application', 'وصلك طلب توظيف جديد',
+      v_title, '/dashboard/jobs'
+    );
+  end if;
+
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_notify_job_application on job_applications;
+create trigger trg_notify_job_application
+  after insert on job_applications
+  for each row execute function notify_job_application();
+
+create or replace function notify_job_reviewed()
+returns trigger as $$
+begin
+  if old.status = new.status then
+    return null;
+  end if;
+
+  if new.status = 'published' then
+    perform notify(new.seller_id, 'job_published', 'تم نشر إعلان الوظيفة', new.title, '/jobs');
+  elsif new.status = 'rejected' then
+    perform notify(new.seller_id, 'job_rejected', 'إعلان الوظيفة ما تم نشره', new.title, '/dashboard/jobs');
+  end if;
+
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_notify_job_reviewed on jobs;
+create trigger trg_notify_job_reviewed
+  after update of status on jobs
+  for each row execute function notify_job_reviewed();
+
+-- ============================================================
+-- 00000000000031_seller_referrals
+-- ============================================================
+
+-- برنامج الإحالة "ادعُ جارك" (seller referral programme) — PLAN.md §7.4,
+-- Grok §17.20. A seller who brings another seller earns a reward. In a town
+-- this size, one shop owner telling another is the growth channel; this makes
+-- that measurable and pays for it.
+--
+-- Reward design: extra free listing slots, NOT a free paid month. Tap is not
+-- live (STATUS.md), so a "free month" would be a promise the billing system
+-- can't honour yet, whereas free_listing_limit is enforced today by
+-- can_create_listing() and costs nothing to grant.
+--
+-- Qualification is deliberately not "signed up": that is trivially farmed with
+-- throwaway accounts. A referral qualifies only when the referred seller is
+-- admin-approved AND has published a real listing.
+
+alter table sellers
+  add column if not exists referral_code text unique,
+  add column if not exists referral_bonus_slots int not null default 0;
+
+-- Sellers must not hand themselves bonus slots or rewrite their code.
+revoke update (referral_code, referral_bonus_slots) on sellers from authenticated;
+
+create table if not exists seller_referrals (
+  id bigserial primary key,
+  referrer_seller_id uuid references sellers(id) on delete cascade not null,
+  referred_seller_id uuid references sellers(id) on delete cascade not null unique,
+  status text not null default 'pending'
+    check (status in ('pending', 'qualified')),
+  created_at timestamptz default now(),
+  qualified_at timestamptz,
+  constraint seller_referrals_no_self check (referrer_seller_id <> referred_seller_id)
+);
+
+create index if not exists idx_seller_referrals_referrer
+  on seller_referrals (referrer_seller_id, status);
+
+alter table seller_referrals enable row level security;
+
+-- A seller sees the referrals they made and the one that brought them in.
+drop policy if exists "seller_referrals_select_own" on seller_referrals;
+create policy "seller_referrals_select_own" on seller_referrals for select using (
+  referrer_seller_id = auth.uid() or referred_seller_id = auth.uid()
+);
+
+drop policy if exists "admin_all_seller_referrals" on seller_referrals;
+create policy "admin_all_seller_referrals" on seller_referrals for all using (is_admin());
+
+-- Codes are short, unambiguous, and generated server-side. Excludes visually
+-- confusable characters (0/O, 1/I) because these get read aloud and copied off
+-- a phone screen in practice.
+create or replace function generate_referral_code()
+returns text as $$
+declare
+  v_alphabet text := 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  v_code text;
+  v_attempt int := 0;
+begin
+  loop
+    v_code := '';
+    for i in 1..6 loop
+      v_code := v_code || substr(v_alphabet, floor(random() * length(v_alphabet) + 1)::int, 1);
+    end loop;
+
+    exit when not exists (select 1 from sellers where referral_code = v_code);
+
+    v_attempt := v_attempt + 1;
+    if v_attempt > 20 then
+      raise exception 'could not generate a unique referral code';
+    end if;
+  end loop;
+
+  return v_code;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+-- Every seller gets a code on creation, and existing rows are backfilled below.
+create or replace function assign_referral_code()
+returns trigger as $$
+begin
+  if new.referral_code is null then
+    new.referral_code := generate_referral_code();
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_assign_referral_code on sellers;
+create trigger trg_assign_referral_code
+  before insert on sellers
+  for each row execute function assign_referral_code();
+
+update sellers set referral_code = generate_referral_code() where referral_code is null;
+
+-- Claiming a referral: called from the seller-setup action with the code the
+-- new seller arrived with. SECURITY DEFINER because it must read another
+-- seller's row to resolve the code, which RLS would otherwise hide.
+create or replace function claim_referral(p_code text)
+returns boolean as $$
+declare
+  v_referrer uuid;
+begin
+  if p_code is null or length(trim(p_code)) = 0 then
+    return false;
+  end if;
+
+  select id into v_referrer from sellers where referral_code = upper(trim(p_code));
+
+  if v_referrer is null or v_referrer = auth.uid() then
+    return false;
+  end if;
+
+  -- The caller must actually be a seller, and can only claim for themselves.
+  if not exists (select 1 from sellers where id = auth.uid()) then
+    return false;
+  end if;
+
+  insert into seller_referrals (referrer_seller_id, referred_seller_id)
+  values (v_referrer, auth.uid())
+  on conflict (referred_seller_id) do nothing;
+
+  return true;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+revoke all on function generate_referral_code() from anon, authenticated;
+
+-- Qualification + reward. Fires when a referred seller becomes approved or
+-- publishes a listing; both conditions must hold before the bonus is granted,
+-- and the status flip makes it exactly-once.
+create or replace function qualify_referral(p_seller_id uuid)
+returns void as $$
+declare
+  v_referrer uuid;
+  v_has_listing boolean;
+  v_approved boolean;
+begin
+  select referrer_seller_id into v_referrer
+    from seller_referrals
+    where referred_seller_id = p_seller_id and status = 'pending';
+
+  if v_referrer is null then
+    return;
+  end if;
+
+  select verification_status = 'approved' into v_approved
+    from sellers where id = p_seller_id;
+
+  select exists (
+    select 1 from listings where seller_id = p_seller_id and status = 'published'
+  ) into v_has_listing;
+
+  if not (v_approved and v_has_listing) then
+    return;
+  end if;
+
+  update seller_referrals
+    set status = 'qualified', qualified_at = now()
+    where referred_seller_id = p_seller_id and status = 'pending';
+
+  -- 3 extra free slots per qualified referral.
+  update sellers
+    set referral_bonus_slots = referral_bonus_slots + 3,
+        free_listing_limit = free_listing_limit + 3
+    where id = v_referrer;
+
+  perform notify(
+    v_referrer, 'referral_qualified', 'إحالتك نجحت',
+    'أضفنا 3 إعلانات مجانية إضافية لحسابك.', '/dashboard/referrals'
+  );
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+revoke all on function qualify_referral(uuid) from anon, authenticated;
+
+create or replace function trg_qualify_on_seller_approved()
+returns trigger as $$
+begin
+  if new.verification_status = 'approved'
+     and old.verification_status is distinct from 'approved' then
+    perform qualify_referral(new.id);
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_referral_on_seller_approved on sellers;
+create trigger trg_referral_on_seller_approved
+  after update of verification_status on sellers
+  for each row execute function trg_qualify_on_seller_approved();
+
+create or replace function trg_qualify_on_listing_published()
+returns trigger as $$
+begin
+  if new.status = 'published' and old.status is distinct from 'published' then
+    perform qualify_referral(new.seller_id);
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_referral_on_listing_published on listings;
+create trigger trg_referral_on_listing_published
+  after update of status on listings
+  for each row execute function trg_qualify_on_listing_published();
+
+-- ============================================================
+-- 00000000000032_activity_index
+-- ============================================================
+
+-- مؤشر النشاط والاستجابة — PLAN.md §20.19 ("آخر تحديث" + عدم التحديث يخفض
+-- الظهور), §20.21 ("نشط حاليًا / يستجيب خلال ساعة"), DeepSeek §19.16
+-- ("دفتر تواصل علني").
+--
+-- The failure mode this prevents is the one every local directory dies of:
+-- becoming a graveyard of stale listings whose owners stopped answering. A
+-- buyer needs to know *before* messaging whether anyone is still on the other
+-- end.
+--
+-- last_active_at is denormalized onto sellers rather than computed per request,
+-- because it is needed for ORDER BY on category pages — a per-row subquery
+-- there would scan every listing/response the seller ever made.
+
+alter table sellers
+  add column if not exists last_active_at timestamptz;
+
+-- Not something a seller may set: "active" has to be earned by doing something,
+-- otherwise the signal means nothing.
+revoke update (last_active_at) on sellers from authenticated;
+
+create or replace function touch_seller_activity(p_seller_id uuid)
+returns void as $$
+  update sellers set last_active_at = now() where id = p_seller_id;
+$$ language sql security definer set search_path = public, pg_temp;
+
+revoke all on function touch_seller_activity(uuid) from anon, authenticated;
+
+create or replace function trg_touch_activity_from_listing()
+returns trigger as $$
+begin
+  perform touch_seller_activity(new.seller_id);
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_activity_listing on listings;
+create trigger trg_activity_listing
+  after insert or update on listings
+  for each row execute function trg_touch_activity_from_listing();
+
+create or replace function trg_touch_activity_from_response()
+returns trigger as $$
+begin
+  perform touch_seller_activity(new.seller_id);
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_activity_need_response on need_responses;
+create trigger trg_activity_need_response
+  after insert on need_responses
+  for each row execute function trg_touch_activity_from_response();
+
+drop trigger if exists trg_activity_transaction on transactions;
+create trigger trg_activity_transaction
+  after update of status on transactions
+  for each row execute function trg_touch_activity_from_response();
+
+-- Backfill from what already exists so the column isn't uniformly null on day
+-- one (which would make every seller look dormant).
+update sellers s
+set last_active_at = greatest(
+  coalesce((select max(updated_at) from listings where seller_id = s.id), s.created_at),
+  s.created_at
+)
+where s.last_active_at is null;
+
+-- Public activity summary. Read-only over data that is already public, so it is
+-- safe to expose without an admin check.
+create or replace function seller_activity(p_seller_id uuid)
+returns table (
+  last_active_at timestamptz,
+  is_recently_active boolean,
+  responses_30d bigint,
+  avg_response_hours numeric,
+  contact_clicks_30d bigint
+) as $$
+  select
+    s.last_active_at,
+    s.last_active_at > now() - interval '7 days',
+    (select count(*) from need_responses r
+      where r.seller_id = p_seller_id and r.created_at > now() - interval '30 days'),
+    -- How long after a need is posted this seller answers it. The honest
+    -- available proxy for responsiveness: it is the only place the platform
+    -- sees both sides of a timed exchange (WhatsApp replies happen off-site).
+    (select round(avg(extract(epoch from (r.created_at - q.created_at)) / 3600)::numeric, 1)
+      from need_responses r
+      join need_requests q on q.id = r.request_id
+      where r.seller_id = p_seller_id
+        and r.created_at > now() - interval '90 days'),
+    (select count(*) from contact_clicks c
+      join listings l on l.id = c.listing_id
+      where l.seller_id = p_seller_id and c.clicked_at > now() - interval '30 days')
+  from sellers s
+  where s.id = p_seller_id;
+$$ language sql stable security definer set search_path = public, pg_temp;
+
+-- ============================================================
+-- 00000000000033_saved_searches
+-- ============================================================
+
+-- بحث محفوظ + تنبيهات مطابقة (saved searches with match alerts) — PLAN.md
+-- §20.48 ("أبحث عن قطعة … يتواصل معه صاحبها لو ظهرت لاحقًا") and §20.29.
+--
+-- Closes the loop the whole site otherwise leaks: someone searches for a thing
+-- that doesn't exist yet, finds nothing, and never comes back — even when it
+-- appears a week later. A saved search turns that dead end into a return visit.
+--
+-- Matching reuses normalize_arabic() and the same pg_trgm operators as
+-- search_listings (migration 6), so an alert fires on exactly what the search
+-- page would have shown — "كيكه" saved matches a "كيكة" listing.
+
+create table if not exists saved_searches (
+  id bigserial primary key,
+  user_id uuid references profiles(id) on delete cascade not null,
+  query text not null,
+  -- Stored normalized so the trigger below never has to re-normalize per row.
+  normalized_query text not null,
+  category_id int references categories(id),
+  neighborhood_id int references neighborhoods(id),
+  created_at timestamptz default now(),
+  unique (user_id, normalized_query)
+);
+
+create index if not exists idx_saved_searches_match
+  on saved_searches using gin (normalized_query gin_trgm_ops);
+
+-- Remembers which listing already alerted which saved search. Without this, any
+-- later UPDATE on a published listing (a price edit, a re-approval after an
+-- edit) would re-notify everyone who saved that search.
+create table if not exists saved_search_matches (
+  id bigserial primary key,
+  saved_search_id bigint references saved_searches(id) on delete cascade not null,
+  listing_id uuid references listings(id) on delete cascade not null,
+  created_at timestamptz default now(),
+  unique (saved_search_id, listing_id)
+);
+
+alter table saved_searches enable row level security;
+alter table saved_search_matches enable row level security;
+
+drop policy if exists "saved_searches_select_own" on saved_searches;
+create policy "saved_searches_select_own" on saved_searches for select using (
+  user_id = auth.uid()
+);
+
+drop policy if exists "saved_searches_insert_own" on saved_searches;
+create policy "saved_searches_insert_own" on saved_searches for insert with check (
+  user_id = auth.uid()
+);
+
+drop policy if exists "saved_searches_delete_own" on saved_searches;
+create policy "saved_searches_delete_own" on saved_searches for delete using (
+  user_id = auth.uid()
+);
+
+drop policy if exists "admin_all_saved_searches" on saved_searches;
+create policy "admin_all_saved_searches" on saved_searches for all using (is_admin());
+
+-- The match ledger is internal bookkeeping; only the trigger (definer) and
+-- admins touch it.
+drop policy if exists "admin_all_saved_search_matches" on saved_search_matches;
+create policy "admin_all_saved_search_matches" on saved_search_matches for all using (is_admin());
+
+-- Normalizes on insert so callers can't store an unnormalized query that would
+-- silently never match.
+create or replace function set_saved_search_normalized()
+returns trigger as $$
+begin
+  new.normalized_query := normalize_arabic(new.query);
+  return new;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_saved_search_normalize on saved_searches;
+create trigger trg_saved_search_normalize
+  before insert or update of query on saved_searches
+  for each row execute function set_saved_search_normalized();
+
+-- The matcher. Runs when a listing becomes published (not on every update), and
+-- notifies each saved search that matches and hasn't been told about this
+-- listing before.
+create or replace function match_saved_searches()
+returns trigger as $$
+declare
+  v_row record;
+begin
+  if new.status <> 'published' or old.status is not distinct from 'published' then
+    return null;
+  end if;
+
+  for v_row in
+    select ss.id, ss.user_id, ss.query
+    from saved_searches ss
+    where
+      -- Filters first (cheap, indexed), fuzzy text last.
+      (ss.category_id is null or ss.category_id = new.category_id)
+      and (ss.neighborhood_id is null or ss.neighborhood_id = new.neighborhood_id)
+      and (
+        new.search_text % ss.normalized_query
+        or new.search_text like '%' || ss.normalized_query || '%'
+      )
+      -- Don't alert a seller about their own listing.
+      and ss.user_id <> new.seller_id
+      and not exists (
+        select 1 from saved_search_matches m
+        where m.saved_search_id = ss.id and m.listing_id = new.id
+      )
+  loop
+    insert into saved_search_matches (saved_search_id, listing_id)
+    values (v_row.id, new.id)
+    on conflict do nothing;
+
+    perform notify(
+      v_row.user_id,
+      'saved_search_match',
+      'وصل شي يطابق بحثك المحفوظ',
+      v_row.query || ' — ' || new.title,
+      '/listing/' || new.slug
+    );
+  end loop;
+
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_match_saved_searches on listings;
+create trigger trg_match_saved_searches
+  after update of status on listings
+  for each row execute function match_saved_searches();

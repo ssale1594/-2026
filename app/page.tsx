@@ -34,6 +34,12 @@ export default async function Home() {
             <Link href="/needs" className="hover:underline">
               الطلبات
             </Link>
+            <Link href="/jobs" className="hover:underline">
+              وظائف
+            </Link>
+            <Link href="/events" className="hover:underline">
+              فعاليات
+            </Link>
             <Link href="/ask" className="hover:underline">
               اسأل
             </Link>

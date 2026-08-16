@@ -16,7 +16,11 @@ const BUSINESS_TYPES = [
   { value: "individual", label: "فرد" },
 ];
 
-export default function SetupForm() {
+export default function SetupForm({
+  referralCode = "",
+}: {
+  referralCode?: string;
+}) {
   const [state, formAction, isPending] = useActionState(
     createSellerProfile,
     initialState
@@ -55,6 +59,17 @@ export default function SetupForm() {
       <label className="flex flex-col gap-1">
         <span className="text-sm">نبذة عن النشاط</span>
         <textarea name="description" rows={4} maxLength={1000} className={fieldClass} />
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-sm">كود دعوة — اختياري</span>
+        <input
+          name="referralCode"
+          defaultValue={referralCode}
+          maxLength={12}
+          placeholder="لو أحد البائعين دعاك"
+          className={fieldClass}
+        />
       </label>
 
       {state.error && <p className="text-sm text-red-600">{state.error}</p>}

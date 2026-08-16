@@ -4,7 +4,12 @@ import { createClient } from "@/lib/supabase/server";
 import DashboardHeader from "../dashboard-header";
 import SetupForm from "./setup-form";
 
-export default async function SetupPage() {
+export default async function SetupPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ref?: string }>;
+}) {
+  const { ref } = await searchParams;
   const user = await requireUser();
   const supabase = await createClient();
 
@@ -27,7 +32,7 @@ export default async function SetupPage() {
         <p className="text-sm text-black/60 dark:text-white/60 mb-6">
           نراجع كل نشاط جديد قبل ظهوره بالموقع.
         </p>
-        <SetupForm />
+        <SetupForm referralCode={ref ?? ""} />
       </main>
     </div>
   );

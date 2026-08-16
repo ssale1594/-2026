@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { pageTitle, siteName } from "@/lib/seo";
 import SearchBox from "@/components/search-box";
+import SaveSearchButton from "./save-search-button";
 
 // TECH.md §8 — dynamic search pages carry no SEO value and must stay out of the index.
 export const metadata: Metadata = {
@@ -27,10 +28,14 @@ export default async function SearchPage({
   const { q } = await searchParams;
   const query = q?.trim() ?? "";
 
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   let results: SearchResult[] = [];
 
   if (query) {
-    const supabase = await createClient();
     const { data } = await supabase.rpc("search_listings", { p_query: query });
     results = (data as SearchResult[]) ?? [];
 
@@ -63,9 +68,23 @@ export default async function SearchPage({
             اكتب كلمة للبحث بين الإعلانات المنشورة.
           </p>
         ) : results.length === 0 ? (
-          <p className="text-black/60 dark:text-white/60">
-            ما لقينا نتائج لـ &quot;{query}&quot;.
-          </p>
+          <div className="flex flex-col gap-4">
+            <p className="text-black/60 dark:text-white/60">
+              ما لقينا نتائج لـ &quot;{query}&quot;.
+            </p>
+            <SaveSearchButton
+              query={query}
+              isSignedIn={Boolean(user)}
+              resultsCount={0}
+            />
+            <p className="text-sm text-black/50 dark:text-white/50">
+              أو{" "}
+              <Link href="/needs/new" className="underline">
+                انشر طلبك
+              </Link>{" "}
+              وخلّ البائعين يتواصلون معك.
+            </p>
+          </div>
         ) : (
           <>
             <h1 className="text-lg font-semibold mb-4">
@@ -92,6 +111,13 @@ export default async function SearchPage({
                 </li>
               ))}
             </ul>
+            <div className="mt-8">
+              <SaveSearchButton
+                query={query}
+                isSignedIn={Boolean(user)}
+                resultsCount={results.length}
+              />
+            </div>
           </>
         )}
       </main>
