@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 async function logAdminAction(
   adminId: string,
   action: string,
-  targetType: "seller" | "listing" | "referral",
+  targetType: "seller" | "listing" | "referral" | "offer",
   targetId: string | number
 ) {
   const supabase = await createClient();
@@ -52,6 +52,19 @@ export async function setListingStatus(
 
   await logAdminAction(admin.id, `listing_${status}`, "listing", listingId);
   revalidatePath("/admin/listings");
+}
+
+export async function setOfferStatus(
+  offerId: number,
+  status: "published" | "rejected"
+) {
+  const admin = await requireAdmin();
+  const supabase = await createClient();
+
+  await supabase.from("offers").update({ status }).eq("id", offerId);
+
+  await logAdminAction(admin.id, `offer_${status}`, "offer", offerId);
+  revalidatePath("/admin/offers");
 }
 
 export async function setReferralStatus(

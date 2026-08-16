@@ -6,6 +6,8 @@ import { listingImageUrl } from "@/lib/storage";
 import { getListingBySlug } from "@/lib/data/listings";
 import { relativeTimeAr } from "@/lib/relative-time";
 import { createClient } from "@/lib/supabase/server";
+import { getSellerTrust } from "@/lib/data/trust";
+import TrustBadge from "@/components/trust-badge";
 import WhatsappButton from "./whatsapp-button";
 import ViewTracker from "./view-tracker";
 import ClaimButton from "./claim-button";
@@ -56,11 +58,13 @@ export default async function ListingPage({
       data: { user },
     },
     { data: ratingRows },
+    trust,
   ] = await Promise.all([
     supabase.auth.getUser(),
     listing.sellers
       ? supabase.rpc("seller_rating", { p_seller_id: listing.sellers.id })
       : Promise.resolve({ data: null }),
+    listing.sellers ? getSellerTrust(listing.sellers.id) : Promise.resolve(null),
   ]);
 
   const rating = (ratingRows as { average: number | null; total: number }[] | null)?.[0];
@@ -138,6 +142,9 @@ export default async function ListingPage({
             <div className="flex items-center justify-between">
               <div>
                 <div className="font-medium">{listing.sellers.business_name}</div>
+                <div className="mt-1 mb-1">
+                  <TrustBadge trust={trust} />
+                </div>
                 {rating && rating.total > 0 && (
                   <div className="text-sm text-black/60 dark:text-white/60">
                     ★ {rating.average} · {rating.total} تقييم موثّق

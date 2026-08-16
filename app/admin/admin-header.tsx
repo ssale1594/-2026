@@ -3,6 +3,7 @@ import Link from "next/link";
 const TABS = [
   { key: "sellers", href: "/admin/sellers", label: "البائعون" },
   { key: "listings", href: "/admin/listings", label: "الإعلانات" },
+  { key: "offers", href: "/admin/offers", label: "العروض" },
   { key: "referrals", href: "/admin/referrals", label: "الترشيحات" },
   { key: "sponsorships", href: "/admin/sponsorships", label: "الرعايات" },
   { key: "pulse", href: "/admin/pulse", label: "نبض الزلفي" },

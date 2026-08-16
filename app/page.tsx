@@ -28,8 +28,14 @@ export default async function Home() {
         <div className="mx-auto max-w-5xl px-4 py-5 flex items-center justify-between gap-4">
           <span className="text-lg font-bold shrink-0">{siteName}</span>
           <nav className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm text-black/60 dark:text-white/60">
+            <Link href="/offers" className="hover:underline">
+              عروض اليوم
+            </Link>
             <Link href="/needs" className="hover:underline">
               الطلبات
+            </Link>
+            <Link href="/ask" className="hover:underline">
+              اسأل
             </Link>
             <Link href="/whats-new" className="hover:underline">
               وش الجديد؟

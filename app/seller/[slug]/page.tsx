@@ -5,6 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { pageTitle, siteName } from "@/lib/seo";
 import { getSellerBySlug } from "@/lib/data/sellers";
 import { relativeTimeAr } from "@/lib/relative-time";
+import { getSellerTrust } from "@/lib/data/trust";
+import TrustBadge from "@/components/trust-badge";
+import VouchButton from "./vouch-button";
 
 export async function generateMetadata({
   params,
@@ -61,6 +64,24 @@ export default async function SellerPage({
 
   const rating = (ratingRows as { average: number | null; total: number }[] | null)?.[0];
 
+  const [
+    {
+      data: { user },
+    },
+    trust,
+  ] = await Promise.all([supabase.auth.getUser(), getSellerTrust(seller.id)]);
+
+  // Only asked once we know there's a signed-in visitor who isn't the seller.
+  const { data: existingVouch } =
+    user && user.id !== seller.id
+      ? await supabase
+          .from("vouches")
+          .select("id")
+          .eq("seller_id", seller.id)
+          .eq("voucher_id", user.id)
+          .maybeSingle()
+      : { data: null };
+
   // wa.me requires digits only (country code, no leading +/00/spaces).
   const whatsappHref = `https://wa.me/${seller.whatsapp_number.replace(/\D/g, "")}`;
 
@@ -78,6 +99,9 @@ export default async function SellerPage({
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-semibold">{seller.business_name}</h1>
+            <div className="mt-2">
+              <TrustBadge trust={trust} showDetail />
+            </div>
             {rating && rating.total > 0 && (
               <div className="text-sm text-black/60 dark:text-white/60 mt-1">
                 ★ {rating.average} · {rating.total} تقييم موثّق
@@ -88,6 +112,14 @@ export default async function SellerPage({
                 {seller.description}
               </p>
             )}
+            <div className="mt-3">
+              <VouchButton
+                sellerId={seller.id}
+                isSignedIn={Boolean(user)}
+                alreadyVouched={Boolean(existingVouch)}
+                isSelf={user?.id === seller.id}
+              />
+            </div>
           </div>
           <a
             href={whatsappHref}

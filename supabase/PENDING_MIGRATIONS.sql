@@ -1,12 +1,16 @@
 -- ============================================================================
 -- الهجرات المعلّقة — الصقها كاملة مرة واحدة بـSQL Editor بلوحة Supabase
 -- ============================================================================
--- هذا الملف مولّد آليًا بدمج ملفات supabase/migrations/ من 17 إلى 23 بالترتيب.
--- الترتيب مهم: 21 (need_requests) لازم قبل 22 لأن تقرير نبض الزلفي يقرأ منه.
+-- مولّد آليًا بدمج supabase/migrations/ من 17 إلى 28 بالترتيب.
+--
+-- الترتيب إلزامي — فيه اعتماديات حقيقية:
+--   21 (need_requests) قبل 22، لأن تقرير نبض الزلفي يقرأ من جدول الطلبات
+--   23 (transactions/reviews) و25 (vouches) قبل 27، لأن مستوى الثقة يحسب منهما
+--   24 و25 و26 قبل 28، لأن الإشعارات تركّب triggers على offers وvouches وanswers
 --
 -- كلها idempotent (تتحمل إعادة التشغيل بأمان): الجداول بـif not exists،
--- السياسات مسبوقة بـdrop if exists، وبيانات العرض التجريبية (17) تتخطى
--- نفسها لو سبق تشغيلها.
+-- السياسات مسبوقة بـdrop if exists، والدوال بـcreate or replace، وبيانات
+-- العرض التجريبية (17) تتخطى نفسها لو سبق تشغيلها.
 --
 -- بعد التشغيل الناجح، حدّث جدول الهجرات بـSTATUS.md من ⚠️ غير مطبّقة إلى ✅.
 -- ============================================================================
@@ -664,4 +668,615 @@ returns table (average numeric, total bigint) as $$
   select round(avg(rating), 1), count(*)
   from reviews
   where seller_id = p_seller_id;
+$$ language sql stable security definer set search_path = public, pg_temp;
+
+-- ============================================================
+-- 00000000000024_daily_offers
+-- ============================================================
+
+-- عروض اليوم (time-limited offers) — PLAN.md §2.8 and §1.2. A seller announces
+-- a discount or limited deal that expires on its own, which is what makes it
+-- worth checking the site daily. Distinct from is_featured (a permanent admin
+-- flag): an offer carries its own window and its own copy.
+--
+-- Offers go through the same manual review as listings — an unreviewed
+-- discount claim on the front page is exactly the kind of thing that damages
+-- trust in a small town.
+
+create table if not exists offers (
+  id bigserial primary key,
+  seller_id uuid references sellers(id) on delete cascade not null,
+  -- Optional: an offer may point at one listing, or stand alone (e.g. a
+  -- shop-wide "خصم 20% هذا الأسبوع").
+  listing_id uuid references listings(id) on delete set null,
+  title text not null,
+  description text,
+  starts_at timestamptz not null default now(),
+  ends_at timestamptz not null,
+  status text not null default 'pending_review'
+    check (status in ('pending_review', 'published', 'rejected')),
+  created_at timestamptz default now(),
+  constraint offers_period_valid check (ends_at > starts_at)
+);
+
+create index if not exists idx_offers_live
+  on offers (status, starts_at, ends_at);
+create index if not exists idx_offers_seller on offers (seller_id, created_at desc);
+
+alter table offers enable row level security;
+
+-- Public sees only reviewed offers inside their window. Expiry is enforced in
+-- the policy itself rather than by a cleanup job, so a lapsed offer disappears
+-- the moment it ends with nothing scheduled to run.
+drop policy if exists "offers_select_public" on offers;
+create policy "offers_select_public" on offers for select using (
+  status = 'published' and now() >= starts_at and now() < ends_at
+);
+
+drop policy if exists "offers_select_own" on offers;
+create policy "offers_select_own" on offers for select using (
+  seller_id = auth.uid()
+);
+
+-- Only an approved seller may create offers, and never pre-published.
+drop policy if exists "offers_insert_own" on offers;
+create policy "offers_insert_own" on offers for insert with check (
+  seller_id = auth.uid()
+  and status = 'pending_review'
+  and exists (
+    select 1 from sellers s
+    where s.id = auth.uid() and s.verification_status = 'approved'
+  )
+);
+
+-- status is admin-only territory: revoking the column stops a seller from
+-- publishing their own offer through a direct API call, the same way
+-- migration 15 handled listings.is_featured.
+revoke update (status, seller_id) on offers from authenticated;
+
+drop policy if exists "offers_update_own" on offers;
+create policy "offers_update_own" on offers for update
+  using (seller_id = auth.uid())
+  with check (seller_id = auth.uid());
+
+drop policy if exists "offers_delete_own" on offers;
+create policy "offers_delete_own" on offers for delete using (
+  seller_id = auth.uid()
+);
+
+drop policy if exists "admin_all_offers" on offers;
+create policy "admin_all_offers" on offers for all using (is_admin());
+
+-- admin_actions logs offer reviews too; migration 18 widened target_id to text
+-- and this extends the allowed target types alongside it.
+do $$
+begin
+  if exists (select 1 from pg_constraint where conname = 'admin_actions_target_type_check') then
+    alter table admin_actions drop constraint admin_actions_target_type_check;
+  end if;
+
+  alter table admin_actions add constraint admin_actions_target_type_check
+    check (target_type in ('seller', 'listing', 'referral', 'offer'));
+end $$;
+
+-- ============================================================
+-- 00000000000025_vouches
+-- ============================================================
+
+-- توصية الجار (neighbor vouching) — repeated across sources: Grok §17.7,
+-- GLM §18.10 "الكفيل المجتمعي", DeepSeek §19.9 "شهادة الجيران الخمسة",
+-- ChatGPT §20.20. In a town where everyone knows everyone, "150 من أهل بلدك
+-- يعرفونه" is stronger social proof than any anonymous star average.
+--
+-- Deliberately separate from reviews: a review requires a confirmed
+-- transaction, a vouch only requires knowing the person. They answer different
+-- questions ("is he good at the job?" vs "is he a real, known person?").
+
+create table if not exists vouches (
+  id bigserial primary key,
+  seller_id uuid references sellers(id) on delete cascade not null,
+  voucher_id uuid references profiles(id) on delete cascade not null,
+  note text,
+  created_at timestamptz default now(),
+  -- One vouch per person per seller, and never for yourself.
+  unique (seller_id, voucher_id),
+  constraint vouches_no_self check (seller_id <> voucher_id)
+);
+
+create index if not exists idx_vouches_seller on vouches (seller_id);
+
+alter table vouches enable row level security;
+
+-- Vouches are public — the count is the whole point.
+drop policy if exists "vouches_select_public" on vouches;
+create policy "vouches_select_public" on vouches for select using (true);
+
+-- A signed-in resident vouches as themselves, only for an approved seller.
+-- The self-vouch block lives in the CHECK constraint above as well, so it holds
+-- even for an admin-issued insert.
+drop policy if exists "vouches_insert_own" on vouches;
+create policy "vouches_insert_own" on vouches for insert with check (
+  voucher_id = auth.uid()
+  and exists (
+    select 1 from sellers s
+    where s.id = seller_id and s.verification_status = 'approved'
+  )
+);
+
+drop policy if exists "vouches_delete_own" on vouches;
+create policy "vouches_delete_own" on vouches for delete using (
+  voucher_id = auth.uid()
+);
+
+drop policy if exists "admin_all_vouches" on vouches;
+create policy "admin_all_vouches" on vouches for all using (is_admin());
+
+create or replace function seller_vouch_count(p_seller_id uuid)
+returns bigint as $$
+  select count(*) from vouches where seller_id = p_seller_id;
+$$ language sql stable security definer set search_path = public, pg_temp;
+
+-- ============================================================
+-- 00000000000026_community_qa
+-- ============================================================
+
+-- "اسأل أهل الزلفي" (community Q&A) — PLAN.md §11.2 and §20.24. The question
+-- "مين يعرف كهربائي زين؟" is the single most common thing asked in local
+-- WhatsApp groups, and every answer to it is a recommendation that should point
+-- at a real seller page instead of evaporating in a chat thread.
+--
+-- Asking requires a signed-in account (buyer profiles exist as of migration 23):
+-- an anonymous public Q&A board in a small town is a moderation problem, and
+-- the whole value here is that answers come from identifiable neighbours.
+
+create table if not exists questions (
+  id bigserial primary key,
+  author_id uuid references profiles(id) on delete cascade not null,
+  title text not null,
+  body text,
+  category_id int references categories(id),
+  neighborhood_id int references neighborhoods(id),
+  status text not null default 'published'
+    check (status in ('published', 'hidden')),
+  answer_count int not null default 0,
+  created_at timestamptz default now()
+);
+
+create index if not exists idx_questions_live
+  on questions (status, created_at desc);
+
+create table if not exists answers (
+  id bigserial primary key,
+  question_id bigint references questions(id) on delete cascade not null,
+  author_id uuid references profiles(id) on delete cascade not null,
+  body text not null,
+  -- The point of the whole feature: an answer can name a seller on the
+  -- platform, turning a chat-style recommendation into a real link.
+  recommended_seller_id uuid references sellers(id) on delete set null,
+  status text not null default 'published'
+    check (status in ('published', 'hidden')),
+  created_at timestamptz default now()
+);
+
+create index if not exists idx_answers_question on answers (question_id, created_at);
+
+alter table questions enable row level security;
+alter table answers enable row level security;
+
+drop policy if exists "questions_select_public" on questions;
+create policy "questions_select_public" on questions for select using (
+  status = 'published'
+);
+
+drop policy if exists "questions_insert_own" on questions;
+create policy "questions_insert_own" on questions for insert with check (
+  author_id = auth.uid() and status = 'published'
+);
+
+-- Hiding is a moderation action; a user editing their own question must not be
+-- able to flip status back after an admin hides it.
+revoke update (status, author_id, answer_count) on questions from authenticated;
+
+drop policy if exists "questions_update_own" on questions;
+create policy "questions_update_own" on questions for update
+  using (author_id = auth.uid())
+  with check (author_id = auth.uid());
+
+drop policy if exists "admin_all_questions" on questions;
+create policy "admin_all_questions" on questions for all using (is_admin());
+
+drop policy if exists "answers_select_public" on answers;
+create policy "answers_select_public" on answers for select using (
+  status = 'published'
+);
+
+drop policy if exists "answers_insert_own" on answers;
+create policy "answers_insert_own" on answers for insert with check (
+  author_id = auth.uid()
+  and status = 'published'
+  and exists (
+    select 1 from questions q
+    where q.id = question_id and q.status = 'published'
+  )
+);
+
+revoke update (status, author_id, question_id) on answers from authenticated;
+
+drop policy if exists "answers_update_own" on answers;
+create policy "answers_update_own" on answers for update
+  using (author_id = auth.uid())
+  with check (author_id = auth.uid());
+
+drop policy if exists "admin_all_answers" on answers;
+create policy "admin_all_answers" on answers for all using (is_admin());
+
+-- Keep questions.answer_count in sync, the same denormalization pattern the
+-- initial schema uses for sellers.active_listings_count.
+create or replace function update_question_answer_count()
+returns trigger as $$
+begin
+  if tg_op = 'INSERT' and new.status = 'published' then
+    update questions set answer_count = answer_count + 1 where id = new.question_id;
+  elsif tg_op = 'DELETE' and old.status = 'published' then
+    update questions set answer_count = answer_count - 1 where id = old.question_id;
+  elsif tg_op = 'UPDATE' and old.status = 'published' and new.status <> 'published' then
+    update questions set answer_count = answer_count - 1 where id = new.question_id;
+  elsif tg_op = 'UPDATE' and old.status <> 'published' and new.status = 'published' then
+    update questions set answer_count = answer_count + 1 where id = new.question_id;
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_answer_count on answers;
+create trigger trg_answer_count
+  after insert or update or delete on answers
+  for each row execute function update_question_answer_count();
+
+-- ============================================================
+-- 00000000000027_trust_levels
+-- ============================================================
+
+-- مستويات الثقة (graded trust levels) — PLAN.md §20.16. A single opaque
+-- "موثّق" badge tells a buyer nothing about *what* was verified. This grades
+-- it, and every level is earned from a signal that already exists in the
+-- database rather than from a self-declaration:
+--
+--   1 مسجّل        — admin approved the account (verification_status)
+--   2 نشِط         — has published listings and updated them recently
+--   3 موصى به      — 3+ neighbours vouched for them (migration 25)
+--   4 موثّق بتعامل — 3+ seller-confirmed transactions and a 4.0+ rating
+--                    (migration 23), i.e. verified by both sides of real deals
+--
+-- identity_verified is the one admin-set flag, for when the owner has actually
+-- seen a commercial registration / national ID. It is shown separately rather
+-- than folded into the level, because it answers a different question.
+
+alter table sellers
+  add column if not exists identity_verified boolean not null default false;
+
+-- Sellers must not be able to set this on themselves (the migration-15 lesson:
+-- WITH CHECK alone cannot pin a column, so revoke the column outright).
+revoke update (identity_verified) on sellers from authenticated;
+
+create or replace function seller_trust(p_seller_id uuid)
+returns table (
+  level int,
+  label text,
+  identity_verified boolean,
+  vouch_count bigint,
+  confirmed_deals bigint,
+  average_rating numeric
+) as $$
+declare
+  v_identity boolean;
+  v_approved boolean;
+  v_published bigint;
+  v_vouches bigint;
+  v_deals bigint;
+  v_rating numeric;
+  v_level int := 0;
+begin
+  select s.identity_verified, s.verification_status = 'approved'
+    into v_identity, v_approved
+    from sellers s where s.id = p_seller_id;
+
+  if v_identity is null then
+    return; -- unknown seller: emit no row
+  end if;
+
+  select count(*) into v_published
+    from listings where seller_id = p_seller_id and status = 'published';
+
+  select count(*) into v_vouches from vouches where seller_id = p_seller_id;
+
+  select count(*) into v_deals
+    from transactions where seller_id = p_seller_id and status = 'confirmed';
+
+  select round(avg(rating), 1) into v_rating
+    from reviews where seller_id = p_seller_id;
+
+  -- Levels are cumulative: each one assumes the ones below it.
+  if v_approved then
+    v_level := 1;
+    if v_published > 0 then
+      v_level := 2;
+      if v_vouches >= 3 then
+        v_level := 3;
+        if v_deals >= 3 and coalesce(v_rating, 0) >= 4.0 then
+          v_level := 4;
+        end if;
+      end if;
+    end if;
+  end if;
+
+  return query select
+    v_level,
+    case v_level
+      when 4 then 'موثّق بتعاملات'
+      when 3 then 'موصى به من الجيران'
+      when 2 then 'نشِط'
+      when 1 then 'مسجّل'
+      else 'تحت المراجعة'
+    end,
+    v_identity,
+    v_vouches,
+    v_deals,
+    v_rating;
+end;
+$$ language plpgsql stable security definer set search_path = public, pg_temp;
+
+-- ============================================================
+-- 00000000000028_notifications
+-- ============================================================
+
+-- إشعارات داخلية (in-app notification centre). Every feature built so far
+-- produces events a seller currently has to discover by manually re-checking a
+-- page: an admin approved their listing, someone claimed a transaction, a
+-- review landed, a neighbour vouched, an answer arrived on their question.
+--
+-- In-app rather than email/SMS on purpose: an email provider is a paid
+-- dependency, and this project pays for nothing before it has revenue
+-- (TECH.md "مبدأ التكلفة"). A notifications table costs nothing and is the
+-- right substrate to add email on top of later.
+--
+-- Every trigger below is SECURITY DEFINER with a pinned search_path (the
+-- migration-15 lesson) because it must insert a row for a *different* user than
+-- the one performing the action, which RLS would otherwise refuse.
+
+create table if not exists notifications (
+  id bigserial primary key,
+  user_id uuid references profiles(id) on delete cascade not null,
+  type text not null,
+  title text not null,
+  body text,
+  link text,
+  is_read boolean not null default false,
+  created_at timestamptz default now()
+);
+
+create index if not exists idx_notifications_user
+  on notifications (user_id, is_read, created_at desc);
+
+alter table notifications enable row level security;
+
+drop policy if exists "notifications_select_own" on notifications;
+create policy "notifications_select_own" on notifications for select using (
+  user_id = auth.uid()
+);
+
+-- The only thing a user may change is the read flag on their own rows; every
+-- other column is written by the triggers below.
+revoke update (user_id, type, title, body, link, created_at) on notifications from authenticated;
+
+drop policy if exists "notifications_update_own" on notifications;
+create policy "notifications_update_own" on notifications for update
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+drop policy if exists "admin_all_notifications" on notifications;
+create policy "admin_all_notifications" on notifications for all using (is_admin());
+
+create or replace function notify(
+  p_user_id uuid,
+  p_type text,
+  p_title text,
+  p_body text default null,
+  p_link text default null
+)
+returns void as $$
+  insert into notifications (user_id, type, title, body, link)
+  values (p_user_id, p_type, p_title, p_body, p_link);
+$$ language sql security definer set search_path = public, pg_temp;
+
+-- ============================================================
+-- 1. Listing reviewed by an admin
+-- ============================================================
+
+create or replace function notify_listing_reviewed()
+returns trigger as $$
+begin
+  if old.status = new.status then
+    return null;
+  end if;
+
+  if new.status = 'published' then
+    perform notify(
+      new.seller_id, 'listing_published', 'تم نشر إعلانك',
+      new.title, '/listing/' || new.slug
+    );
+  elsif new.status = 'rejected' then
+    perform notify(
+      new.seller_id, 'listing_rejected', 'إعلانك محتاج تعديل',
+      new.title, '/dashboard'
+    );
+  end if;
+
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_notify_listing_reviewed on listings;
+create trigger trg_notify_listing_reviewed
+  after update of status on listings
+  for each row execute function notify_listing_reviewed();
+
+-- ============================================================
+-- 2. Seller account approved / rejected
+-- ============================================================
+
+create or replace function notify_seller_reviewed()
+returns trigger as $$
+begin
+  if old.verification_status = new.verification_status then
+    return null;
+  end if;
+
+  if new.verification_status = 'approved' then
+    perform notify(
+      new.id, 'seller_approved', 'تم اعتماد حسابك',
+      'صار بإمكانك نشر إعلاناتك والرد على الطلبات.', '/dashboard'
+    );
+  elsif new.verification_status = 'rejected' then
+    perform notify(
+      new.id, 'seller_rejected', 'حسابك ما تم اعتماده',
+      'تواصل معنا لمعرفة التفاصيل.', '/dashboard'
+    );
+  end if;
+
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_notify_seller_reviewed on sellers;
+create trigger trg_notify_seller_reviewed
+  after update of verification_status on sellers
+  for each row execute function notify_seller_reviewed();
+
+-- ============================================================
+-- 3. A buyer claims a transaction (seller must confirm it)
+-- ============================================================
+
+create or replace function notify_transaction_claimed()
+returns trigger as $$
+begin
+  perform notify(
+    new.seller_id, 'transaction_claimed', 'عميل يقول إنه تعامل معك',
+    'أكّد التعامل عشان يقدر يقيّمك.', '/dashboard/transactions'
+  );
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_notify_transaction_claimed on transactions;
+create trigger trg_notify_transaction_claimed
+  after insert on transactions
+  for each row execute function notify_transaction_claimed();
+
+-- ============================================================
+-- 4. A review is published
+-- ============================================================
+
+create or replace function notify_review_created()
+returns trigger as $$
+declare
+  v_slug text;
+begin
+  select slug into v_slug from sellers where id = new.seller_id;
+
+  perform notify(
+    new.seller_id, 'review_received', 'وصلك تقييم جديد',
+    new.rating || ' من 5', '/seller/' || v_slug
+  );
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_notify_review_created on reviews;
+create trigger trg_notify_review_created
+  after insert on reviews
+  for each row execute function notify_review_created();
+
+-- ============================================================
+-- 5. A neighbour vouches for the seller
+-- ============================================================
+
+create or replace function notify_vouch_created()
+returns trigger as $$
+declare
+  v_slug text;
+begin
+  select slug into v_slug from sellers where id = new.seller_id;
+
+  perform notify(
+    new.seller_id, 'vouch_received', 'أحد الجيران وصّى فيك',
+    new.note, '/seller/' || v_slug
+  );
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_notify_vouch_created on vouches;
+create trigger trg_notify_vouch_created
+  after insert on vouches
+  for each row execute function notify_vouch_created();
+
+-- ============================================================
+-- 6. Someone answers your question
+-- ============================================================
+
+create or replace function notify_answer_created()
+returns trigger as $$
+declare
+  v_author uuid;
+begin
+  select author_id into v_author from questions where id = new.question_id;
+
+  -- Answering your own question shouldn't notify you.
+  if v_author is not null and v_author <> new.author_id then
+    perform notify(
+      v_author, 'answer_received', 'وصلك رد على سؤالك',
+      left(new.body, 120), '/ask/' || new.question_id
+    );
+  end if;
+
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_notify_answer_created on answers;
+create trigger trg_notify_answer_created
+  after insert on answers
+  for each row execute function notify_answer_created();
+
+-- ============================================================
+-- 7. Offer reviewed by an admin
+-- ============================================================
+
+create or replace function notify_offer_reviewed()
+returns trigger as $$
+begin
+  if old.status = new.status then
+    return null;
+  end if;
+
+  if new.status = 'published' then
+    perform notify(new.seller_id, 'offer_published', 'تم نشر عرضك', new.title, '/offers');
+  elsif new.status = 'rejected' then
+    perform notify(new.seller_id, 'offer_rejected', 'عرضك ما تم نشره', new.title, '/dashboard/offers');
+  end if;
+
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+drop trigger if exists trg_notify_offer_reviewed on offers;
+create trigger trg_notify_offer_reviewed
+  after update of status on offers
+  for each row execute function notify_offer_reviewed();
+
+create or replace function unread_notification_count()
+returns bigint as $$
+  select count(*) from notifications
+  where user_id = auth.uid() and not is_read;
 $$ language sql stable security definer set search_path = public, pg_temp;
