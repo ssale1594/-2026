@@ -1,13 +1,17 @@
 -- ============================================================================
 -- الهجرات المعلّقة — الصقها كاملة مرة واحدة بـSQL Editor بلوحة Supabase
 -- ============================================================================
--- مولّد آليًا بدمج supabase/migrations/ من 17 إلى 33 بالترتيب.
+-- مولّد آليًا بدمج supabase/migrations/ من 17 إلى 51 بالترتيب.
 --
 -- الترتيب إلزامي — فيه اعتماديات حقيقية:
 --   21 (need_requests) قبل 22 و32، لأنهما يقرآن منه
 --   23 (transactions) و25 (vouches) قبل 27، لأن مستوى الثقة يحسب منهما
 --   24 و25 و26 قبل 28، لأن الإشعارات تركّب triggers عليها
 --   28 (notify) قبل 30 و31 و33، لأنها كلها تستدعي notify()
+--   42 (deals) قبل 47 (إثباتات الدفع) و51 (الحجوزات تنشئ صفقة عند التأكيد)
+--   43 (الطبقات) قبل 50 (التحليلات تقرأ الطبقة)
+--
+-- ملاحظة: رقم 44 غير موجود — فجوة بالترقيم فقط، ما فيه ملف ناقص.
 --
 -- كلها idempotent: الجداول بـif not exists، السياسات مسبوقة بـdrop if exists،
 -- الأعمدة بـadd column if not exists، والدوال بـcreate or replace.
@@ -115,6 +119,7 @@ begin
   );
 end $$;
 
+
 -- ============================================================
 -- 00000000000018_referrals
 -- ============================================================
@@ -171,6 +176,7 @@ begin
   alter table admin_actions add constraint admin_actions_target_type_check
     check (target_type in ('seller', 'listing', 'referral'));
 end $$;
+
 
 -- ============================================================
 -- 00000000000019_need_journeys
@@ -290,6 +296,7 @@ begin
   end if;
 end $$;
 
+
 -- ============================================================
 -- 00000000000020_sponsorships
 -- ============================================================
@@ -339,6 +346,7 @@ drop policy if exists "admin_all_sponsorships" on sponsorships;
 create policy "admin_all_sponsorships" on sponsorships for all using (
   is_admin()
 );
+
 
 -- ============================================================
 -- 00000000000021_need_requests
@@ -448,6 +456,7 @@ returns boolean as $$
     and created_at > now() - interval '1 day';
 $$ language sql security definer set search_path = public, pg_temp;
 
+
 -- ============================================================
 -- 00000000000022_market_pulse
 -- ============================================================
@@ -540,6 +549,7 @@ returns table (
   where is_admin() and c.is_active
   order by c.sort_order;
 $$ language sql stable security definer set search_path = public, pg_temp;
+
 
 -- ============================================================
 -- 00000000000023_verified_reviews
@@ -670,6 +680,7 @@ returns table (average numeric, total bigint) as $$
   where seller_id = p_seller_id;
 $$ language sql stable security definer set search_path = public, pg_temp;
 
+
 -- ============================================================
 -- 00000000000024_daily_offers
 -- ============================================================
@@ -759,6 +770,7 @@ begin
     check (target_type in ('seller', 'listing', 'referral', 'offer'));
 end $$;
 
+
 -- ============================================================
 -- 00000000000025_vouches
 -- ============================================================
@@ -815,6 +827,7 @@ create or replace function seller_vouch_count(p_seller_id uuid)
 returns bigint as $$
   select count(*) from vouches where seller_id = p_seller_id;
 $$ language sql stable security definer set search_path = public, pg_temp;
+
 
 -- ============================================================
 -- 00000000000026_community_qa
@@ -933,6 +946,7 @@ create trigger trg_answer_count
   after insert or update or delete on answers
   for each row execute function update_question_answer_count();
 
+
 -- ============================================================
 -- 00000000000027_trust_levels
 -- ============================================================
@@ -1025,6 +1039,7 @@ begin
     v_rating;
 end;
 $$ language plpgsql stable security definer set search_path = public, pg_temp;
+
 
 -- ============================================================
 -- 00000000000028_notifications
@@ -1290,6 +1305,7 @@ returns bigint as $$
   where user_id = auth.uid() and not is_read;
 $$ language sql stable security definer set search_path = public, pg_temp;
 
+
 -- ============================================================
 -- 00000000000029_events
 -- ============================================================
@@ -1363,6 +1379,7 @@ begin
   alter table admin_actions add constraint admin_actions_target_type_check
     check (target_type in ('seller', 'listing', 'referral', 'offer', 'event', 'job'));
 end $$;
+
 
 -- ============================================================
 -- 00000000000030_local_jobs
@@ -1504,6 +1521,7 @@ drop trigger if exists trg_notify_job_reviewed on jobs;
 create trigger trg_notify_job_reviewed
   after update of status on jobs
   for each row execute function notify_job_reviewed();
+
 
 -- ============================================================
 -- 00000000000031_seller_referrals
@@ -1713,6 +1731,7 @@ create trigger trg_referral_on_listing_published
   after update of status on listings
   for each row execute function trg_qualify_on_listing_published();
 
+
 -- ============================================================
 -- 00000000000032_activity_index
 -- ============================================================
@@ -1813,6 +1832,7 @@ returns table (
   from sellers s
   where s.id = p_seller_id;
 $$ language sql stable security definer set search_path = public, pg_temp;
+
 
 -- ============================================================
 -- 00000000000033_saved_searches
@@ -1947,3 +1967,2794 @@ drop trigger if exists trg_match_saved_searches on listings;
 create trigger trg_match_saved_searches
   after update of status on listings
   for each row execute function match_saved_searches();
+
+
+-- ============================================================
+-- 00000000000034_email_notifications
+-- ============================================================
+
+-- ============================================================
+-- إعدادات الإشعارات عبر البريد الإلكتروني لكل مستخدم
+-- ============================================================
+
+alter table profiles add column if not exists email_notifications_enabled boolean not null default true;
+alter table profiles add column if not exists email_digest_enabled boolean not null default true;
+
+-- إعدادات تفصيلية لكل نوع إشعار (هل يرسل بالبريد أم لا)
+alter table profiles add column if not exists notify_email_listing_published boolean not null default true;
+alter table profiles add column if not exists notify_email_listing_rejected boolean not null default true;
+alter table profiles add column if not exists notify_email_seller_approved boolean not null default true;
+alter table profiles add column if not exists notify_email_seller_rejected boolean not null default true;
+alter table profiles add column if not exists notify_email_transaction_claimed boolean not null default true;
+alter table profiles add column if not exists notify_email_review_received boolean not null default true;
+alter table profiles add column if not exists notify_email_vouch_received boolean not null default true;
+alter table profiles add column if not exists notify_email_answer_received boolean not null default true;
+alter table profiles add column if not exists notify_email_offer_published boolean not null default true;
+alter table profiles add column if not exists notify_email_offer_rejected boolean not null default true;
+alter table profiles add column if not exists notify_email_need_response boolean not null default true;
+
+comment on column profiles.email_notifications_enabled is 'تشغيل/إيقاف كل رسائل البريد الإلكتروني للمستخدم';
+comment on column profiles.email_digest_enabled is 'تلخيص يومي للإشعارات غير المقروءة بدل إرسالها فورًا';
+
+-- ============================================================
+-- سجل الإرسال البريدي (لمنع إرسال مكرر + تصحيح الأخطاء)
+-- ============================================================
+
+create table if not exists email_log (
+  id bigserial primary key,
+  user_id uuid references profiles(id) on delete set null,
+  email_to text not null,
+  notification_type text,
+  subject text not null,
+  status text not null default 'pending', -- pending | sent | failed | skipped
+  provider text, -- resend | brevo | smtp
+  provider_message_id text,
+  error_message text,
+  notification_id bigint references notifications(id) on delete set null,
+  is_digest boolean not null default false,
+  sent_at timestamptz,
+  created_at timestamptz default now()
+);
+
+create index if not exists idx_email_log_user on email_log (user_id, created_at desc);
+create index if not exists idx_email_log_status on email_log (status, created_at);
+create index if not exists idx_email_log_notification on email_log (notification_id) where notification_id is not null;
+
+alter table email_log enable row level security;
+
+drop policy if exists "email_log_select_own" on email_log;
+create policy "email_log_select_own" on email_log for select using (
+  user_id = auth.uid() or is_admin()
+);
+
+-- المستخدم العادي ما يقدر يعدل شيء، الأدمن فقط
+drop policy if exists "email_log_admin_all" on email_log;
+create policy "email_log_admin_all" on email_log for all using (is_admin());
+
+-- ============================================================
+-- دالة تحقق: هل يجب إرسال هذا النوع بالبريد لهذا المستخدم؟
+-- تُستدعى من الـworker المرسل
+-- ============================================================
+
+create or replace function should_send_email_notification(
+  p_user_id uuid,
+  p_notification_type text
+)
+returns boolean as $$
+declare
+  v_global_enabled boolean;
+  v_digest_enabled boolean;
+  v_type_enabled boolean;
+  v_column_name text;
+begin
+  select email_notifications_enabled, email_digest_enabled
+  into v_global_enabled, v_digest_enabled
+  from profiles where id = p_user_id;
+
+  if v_global_enabled is null or not v_global_enabled then
+    return false;
+  end if;
+
+  -- لو مفعّل الملخص اليومي، ما نرسل فوريًا (يوصل مع الملخص)
+  -- باستثناء أنواع حساسة: رفض حساب، موافقة حساب، مطالبة تعامل
+  if v_digest_enabled and p_notification_type not in ('seller_approved', 'seller_rejected', 'transaction_claimed') then
+    return false;
+  end if;
+
+  v_column_name := 'notify_email_' || p_notification_type;
+  begin
+    execute format('select %I from profiles where id = $1', v_column_name)
+      into v_type_enabled
+      using p_user_id;
+  exception when undefined_column then
+    return v_global_enabled;
+  end;
+
+  return coalesce(v_type_enabled, true);
+end;
+$$ language plpgsql stable security definer set search_path = public, pg_temp;
+
+revoke all on function should_send_email_notification(uuid, text) from anon, authenticated;
+grant execute on function should_send_email_notification(uuid, text) to service_role;
+
+-- ============================================================
+-- دالة جلب الإشعارات للملخص اليومي (Digest)
+-- لكل مستخدم: إشعارات غير مقروءة أو غير مرسلة بالبريد من آخر 24 ساعة
+-- ============================================================
+
+create or replace function get_email_digest_batch(p_batch_size int default 100)
+returns table (
+  user_id uuid,
+  user_email text,
+  user_full_name text,
+  notifications jsonb
+) as $$
+begin
+  return query
+  with users_to_process as (
+    select distinct n.user_id
+    from notifications n
+    join profiles p on p.id = n.user_id
+    where p.email_notifications_enabled = true
+      and p.email_digest_enabled = true
+      and n.created_at > now() - interval '48 hours'
+      and not exists (
+        select 1 from email_log el
+        where el.user_id = n.user_id
+          and el.is_digest = true
+          and el.created_at > now() - interval '20 hours'
+      )
+    limit p_batch_size
+  )
+  select
+    utp.user_id,
+    u.email as user_email,
+    p.full_name as user_full_name,
+    jsonb_agg(
+      jsonb_build_object(
+        'id', n.id,
+        'type', n.type,
+        'title', n.title,
+        'body', n.body,
+        'link', n.link,
+        'is_read', n.is_read,
+        'created_at', n.created_at
+      )
+      order by n.created_at desc
+    ) as notifications
+  from users_to_process utp
+  join notifications n on n.user_id = utp.user_id
+  join profiles p on p.id = utp.user_id
+  join auth.users u on u.id = utp.user_id
+  where n.created_at > now() - interval '48 hours'
+    and not n.is_read
+  group by utp.user_id, u.email, p.full_name;
+end;
+$$ language plpgsql stable security definer set search_path = public, pg_temp;
+
+revoke all on function get_email_digest_batch(int) from anon, authenticated;
+grant execute on function get_email_digest_batch(int) to service_role;
+
+-- ============================================================
+-- دالة جلب الإشعارات للإرسال الفوري (غير المجمعة)
+-- ============================================================
+
+create or replace function get_instant_email_batch(p_batch_size int default 100)
+returns table (
+  notification_id bigint,
+  user_id uuid,
+  user_email text,
+  notification_type text,
+  title text,
+  body text,
+  link text,
+  created_at timestamptz
+) as $$
+begin
+  return query
+  select
+    n.id as notification_id,
+    n.user_id,
+    u.email as user_email,
+    n.type as notification_type,
+    n.title,
+    n.body,
+    n.link,
+    n.created_at
+  from notifications n
+  join auth.users u on u.id = n.user_id
+  where not exists (
+    select 1 from email_log el
+    where el.notification_id = n.id
+      and el.status in ('sent', 'pending')
+  )
+  and should_send_email_notification(n.user_id, n.type)
+  and u.email is not null
+  and n.created_at > now() - interval '7 days'
+  order by n.created_at asc
+  limit p_batch_size;
+end;
+$$ language plpgsql stable security definer set search_path = public, pg_temp;
+
+revoke all on function get_instant_email_batch(int) from anon, authenticated;
+grant execute on function get_instant_email_batch(int) to service_role;
+
+-- ============================================================
+-- دالة تحديث حالة الإرسال في السجل
+-- ============================================================
+
+create or replace function mark_email_sent(
+  p_log_id bigint,
+  p_provider text,
+  p_provider_msg_id text default null,
+  p_error text default null
+)
+returns void as $$
+begin
+  update email_log set
+    status = case when p_error is null then 'sent' else 'failed' end,
+    provider = coalesce(p_provider, provider),
+    provider_message_id = p_provider_msg_id,
+    error_message = p_error,
+    sent_at = case when p_error is null then now() else null end
+  where id = p_log_id;
+end;
+$$ language plpgsql security definer set search_path = public, pg_temp;
+
+revoke all on function mark_email_sent(bigint, text, text, text) from anon, authenticated;
+grant execute on function mark_email_sent(bigint, text, text, text) to service_role;
+
+
+-- ============================================================
+-- 00000000000035_advanced_search_function
+-- ============================================================
+
+-- ============================================================
+-- دالة البحث المتقدمة مع الفلاتر والترتيب
+-- تدعم: استعلام نصي، نطاق سعر، حي، فئة، حد أدنى للثقة، حد أدنى للتقييم، صور فقط، خيارات الترتيب
+-- ============================================================
+
+create or replace function search_listings_advanced(
+  p_query text default '',
+  p_price_min numeric default null,
+  p_price_max numeric default null,
+  p_neighborhood_slug text default null,
+  p_category_slug text default null,
+  p_negotiable_only boolean default false,
+  p_with_images_only boolean default false,
+  p_min_trust_level int default 0,
+  p_min_rating numeric default null,
+  p_sort text default 'newest', -- newest | oldest | price_asc | price_desc | rating_desc | views_desc | contact_desc
+  p_limit int default 60,
+  p_offset int default 0
+)
+returns table (
+  id uuid,
+  title text,
+  slug text,
+  price numeric,
+  price_negotiable boolean,
+  description text,
+  has_images boolean,
+  thumbnail_path text,
+  view_count bigint,
+  contact_click_count bigint,
+  average_rating numeric,
+  trust_level int,
+  seller_id uuid,
+  business_name text,
+  seller_slug text,
+  neighborhood_id int,
+  neighborhood_slug text,
+  neighborhood_name text,
+  category_id int,
+  category_slug text,
+  category_name text,
+  published_at timestamptz,
+  rank_score float4
+) as $$
+begin
+  return query
+  with base as (
+    select
+      l.id,
+      l.title,
+      l.slug,
+      l.price,
+      l.price_negotiable,
+      l.description,
+      (exists (select 1 from listing_images li where li.listing_id = l.id)) as has_images,
+      (select li.image_path from listing_images li where li.listing_id = l.id order by li.sort_order, li.id limit 1) as thumbnail_path,
+      l.view_count,
+      l.contact_click_count,
+      l.seller_id,
+      l.created_at as published_at,
+      l.neighborhood_id,
+      l.category_id,
+      s.business_name,
+      s.slug as seller_slug,
+      n.name_ar as neighborhood_name,
+      n.slug as neighborhood_slug,
+      c.name_ar as category_name,
+      c.slug as category_slug,
+      coalesce(
+        (select t.level from seller_trust(l.seller_id) t),
+        0
+      ) as trust_level,
+      (select t.average_rating from seller_trust(l.seller_id) t) as average_rating,
+      case
+        when p_query <> '' then greatest(
+          similarity(l.title, normalize_arabic(p_query)),
+          similarity(l.description, normalize_arabic(p_query)) * 0.5,
+          similarity(s.business_name, normalize_arabic(p_query)) * 0.3
+        )
+        else 0
+      end::float4 as rank_score
+    from listings l
+    join sellers s on s.id = l.seller_id
+    left join neighborhoods n on n.id = l.neighborhood_id
+    left join categories c on c.id = l.category_id
+    where l.status = 'published'
+      and (p_negotiable_only = false or l.price_negotiable = true)
+      and (p_price_min is null or l.price is null or l.price >= p_price_min)
+      and (p_price_max is null or l.price is null or l.price <= p_price_max)
+      and (p_neighborhood_slug is null or n.slug = p_neighborhood_slug)
+      and (p_category_slug is null or c.slug = p_category_slug)
+      and (p_with_images_only = false or exists (select 1 from listing_images li where li.listing_id = l.id))
+      and (
+        p_min_rating is null
+        or exists (select 1 from seller_trust(l.seller_id) t where t.average_rating is not null and t.average_rating >= p_min_rating)
+      )
+      and (
+        p_min_trust_level <= 0
+        or exists (select 1 from seller_trust(l.seller_id) t where t.level >= p_min_trust_level)
+      )
+      and (
+        p_query = ''
+        or (
+          normalize_arabic(l.title) % normalize_arabic(p_query)
+          or normalize_arabic(l.description) % normalize_arabic(p_query)
+          or normalize_arabic(s.business_name) % normalize_arabic(p_query)
+          or to_tsvector('simple', coalesce(normalize_arabic(l.title), '')) @@ plainto_tsquery('simple', normalize_arabic(p_query))
+        )
+      )
+  )
+  select
+    b.id, b.title, b.slug, b.price, b.price_negotiable, b.description,
+    b.has_images, b.thumbnail_path, b.view_count, b.contact_click_count,
+    b.average_rating, b.trust_level, b.seller_id, b.business_name, b.seller_slug,
+    b.neighborhood_id, b.neighborhood_slug, b.neighborhood_name,
+    b.category_id, b.category_slug, b.category_name, b.published_at,
+    b.rank_score
+  from base b
+  order by
+    case when p_sort = 'newest' then b.published_at end desc,
+    case when p_sort = 'oldest' then b.published_at end asc,
+    case when p_sort = 'price_asc' then b.price end asc nulls last,
+    case when p_sort = 'price_desc' then b.price end desc nulls first,
+    case when p_sort = 'rating_desc' then b.average_rating end desc nulls last,
+    case when p_sort = 'views_desc' then b.view_count end desc,
+    case when p_sort = 'contact_desc' then b.contact_click_count end desc,
+    -- default fallback with text search
+    case when p_query <> '' then b.rank_score end desc,
+    b.published_at desc
+  limit greatest(1, least(p_limit, 200))
+  offset greatest(0, p_offset);
+end;
+$$ language plpgsql stable security definer set search_path = public, pg_temp;
+
+revoke all on function search_listings_advanced(text,numeric,numeric,text,text,boolean,boolean,int,numeric,text,int,int) from anon, authenticated;
+grant execute on function search_listings_advanced(text,numeric,numeric,text,text,boolean,boolean,int,numeric,text,int,int) to anon, authenticated, service_role;
+
+-- ============================================================
+-- دالة البحثات الشائعة (أكثر الكلمات بحثًا آخر 30 يومًا مع نتائج موجودة فقط)
+-- ============================================================
+
+create or replace function get_trending_searches(p_limit int default 10)
+returns table (
+  query text,
+  count bigint,
+  avg_results float4
+) as $$
+begin
+  return query
+  select
+    normalized_query as query,
+    count(*) as count,
+    avg(results_count)::float4 as avg_results
+  from search_log
+  where created_at > now() - interval '30 days'
+    and char_length(normalized_query) >= 2
+  group by normalized_query
+  having count(*) >= 2
+  order by count desc, avg_results desc
+  limit greatest(1, least(p_limit, 30));
+end;
+$$ language plpgsql stable security definer set search_path = public, pg_temp;
+
+revoke all on function get_trending_searches(int) from anon, authenticated;
+grant execute on function get_trending_searches(int) to anon, authenticated, service_role;
+
+-- ============================================================
+-- دالة تصنيفات شائعة + أحياء شائعة (للفلاتر السريعة)
+-- ============================================================
+
+create or replace function get_popular_categories(p_limit int default 10)
+returns table (
+  id int, name_ar text, slug text, listing_count bigint
+) as $$
+begin
+  return query
+  select
+    c.id, c.name_ar, c.slug,
+    (select count(*) from listings l where l.category_id = c.id and l.status = 'published')::bigint as listing_count
+  from categories c
+  where c.is_active = true
+  order by listing_count desc, c.name_ar
+  limit greatest(1, least(p_limit, 30));
+end;
+$$ language plpgsql stable security definer set search_path = public, pg_temp;
+
+revoke all on function get_popular_categories(int) from anon, authenticated;
+grant execute on function get_popular_categories(int) to anon, authenticated, service_role;
+
+
+-- ============================================================
+-- 00000000000036_pulse_dashboard_charts
+-- ============================================================
+
+-- ============================================================
+-- دوال إضافية لنبض الزلفي البياني
+-- ============================================================
+
+-- 1) نشاط البحث اليومي آخر N يومًا (للرسوم الخطية)
+create or replace function pulse_daily_activity(p_days int default 30)
+returns table (day date, searches bigint, results_avg float4)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  select
+    gs.d::date as day,
+    (select count(*) from search_log sl where sl.created_at::date = gs.d)::bigint as searches,
+    (
+      select coalesce(avg(sl2.results_count), 0)::float4
+      from search_log sl2 where sl2.created_at::date = gs.d
+    ) as results_avg
+  from generate_series(
+    (now() - (p_days || ' days')::interval)::date,
+    now()::date,
+    '1 day'::interval
+  ) gs(d)
+  order by day asc;
+end; $$;
+
+-- 2) توزيع الإعلانات حسب الأحياء (أكثر 15 حي نشاطًا)
+create or replace function pulse_neighborhood_activity(p_limit int default 15)
+returns table (
+  neighborhood_id int,
+  neighborhood_name text,
+  neighborhood_slug text,
+  listings_count bigint,
+  sellers_count bigint,
+  need_requests_count bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  select
+    n.id as neighborhood_id,
+    n.name_ar as neighborhood_name,
+    n.slug as neighborhood_slug,
+    (select count(*) from listings l where l.neighborhood_id = n.id and l.status = 'published')::bigint as listings_count,
+    (select count(distinct s.id) from sellers s join listings l2 on l2.seller_id = s.id where l2.neighborhood_id = n.id)::bigint as sellers_count,
+    (select count(*) from need_requests nr where nr.neighborhood_id = n.id and nr.status = 'open')::bigint as need_requests_count
+  from neighborhoods n
+  order by listings_count desc, sellers_count desc
+  limit p_limit;
+end; $$;
+
+-- 3) نشاط البحث حسب ساعة اليوم (خريطة حرارية)
+create or replace function pulse_hourly_activity()
+returns table (
+  weekday int,
+  hour int,
+  searches bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  select
+    extract(dow from created_at)::int as weekday,
+    extract(hour from created_at)::int as hour,
+    count(*)::bigint as searches
+  from search_log
+  where created_at > now() - interval '30 days'
+  group by 1, 2
+  order by 1, 2;
+end; $$;
+
+-- 4) الأرقام العامة الشاملة للمنصة (بطاقات KPIs)
+create or replace function pulse_overall_stats()
+returns table (
+  label text,
+  value bigint,
+  delta_30_days bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  select * from (
+    values
+      ('الباعة المعتمدون',
+        (select count(*) from sellers where verification_status = 'approved')::bigint,
+        (select count(*) from sellers where verification_status = 'approved' and created_at > now() - interval '30 days')::bigint
+      ),
+      ('الإعلانات المنشورة',
+        (select count(*) from listings where status = 'published')::bigint,
+        (select count(*) from listings where status = 'published' and created_at > now() - interval '30 days')::bigint
+      ),
+      ('العائلات المنتجة',
+        (select count(*) from sellers where tags ? 'family' or business_type = 'home_producer')::bigint,
+        (select count(*) from sellers where (tags ? 'family' or business_type = 'home_producer') and created_at > now() - interval '30 days')::bigint
+      ),
+      ('عمليات البحث',
+        (select count(*) from search_log)::bigint,
+        (select count(*) from search_log where created_at > now() - interval '30 days')::bigint
+      ),
+      ('التقييمات المكتملة',
+        (select count(*) from reviews where status = 'published')::bigint,
+        (select count(*) from reviews where status = 'published' and created_at > now() - interval '30 days')::bigint
+      ),
+      ('التوصيات المجتمعية',
+        (select count(*) from vouches)::bigint,
+        (select count(*) from vouches where created_at > now() - interval '30 days')::bigint
+      ),
+      ('طلبات أحتاج المفتوحة',
+        (select count(*) from need_requests where status = 'open')::bigint,
+        (select count(*) from need_requests where created_at > now() - interval '30 days')::bigint
+      ),
+      ('معدل الإشعارات',
+        (select count(*) from notifications)::bigint,
+        (select count(*) from notifications where created_at > now() - interval '30 days')::bigint
+      )
+  ) as t(label, value, delta_30_days);
+end; $$;
+
+-- 5) طلبات "أحتاج" حسب الفئة (مقارنة مع عرض الإعلانات) — أفضل نسخة
+create or replace function pulse_category_vs_need()
+returns table (
+  category_name text,
+  published_listings bigint,
+  open_needs bigint,
+  ratio float4
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  select
+    c.name_ar as category_name,
+    (select count(*) from listings l where l.category_id = c.id and l.status = 'published')::bigint as published_listings,
+    (
+      select count(distinct nr.id)
+      from need_requests nr
+      where nr.category_id = c.id and nr.status = 'open'
+    )::bigint as open_needs,
+    (
+      case when (select count(*) from listings l where l.category_id = c.id and l.status = 'published') > 0 then
+        (
+          (select count(distinct nr.id) from need_requests nr where nr.category_id = c.id and nr.status = 'open')::float4
+          /
+          (select count(*)::float4 from listings l where l.category_id = c.id and l.status = 'published')
+        )
+      else 999
+      end
+    )::float4 as ratio
+  from categories c
+  where c.is_active = true
+  order by ratio desc, open_needs desc, published_listings desc;
+end; $$;
+
+revoke all on function pulse_daily_activity(int) from anon, authenticated;
+grant execute on function pulse_daily_activity(int) to service_role;
+
+revoke all on function pulse_neighborhood_activity(int) from anon, authenticated;
+grant execute on function pulse_neighborhood_activity(int) to service_role;
+
+revoke all on function pulse_hourly_activity() from anon, authenticated;
+grant execute on function pulse_hourly_activity() to service_role;
+
+revoke all on function pulse_overall_stats() from anon, authenticated;
+grant execute on function pulse_overall_stats() to service_role;
+
+revoke all on function pulse_category_vs_need() from anon, authenticated;
+grant execute on function pulse_category_vs_need() to service_role;
+
+
+-- ============================================================
+-- 00000000000037_seller_dashboard_kpis
+-- ============================================================
+
+-- ============================================================
+-- دوال إحصائيات البائع الشخصية (لوحة البائع المحسنة)
+-- ============================================================
+
+-- 1) نشاط إعلانات البائع يوميًا آخر 30 يوم (مشاهدات + نقرات)
+create or replace function seller_daily_stats(p_seller_id uuid, p_days int default 30)
+returns table (
+  day date,
+  views bigint,
+  contacts bigint,
+  listings_published bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  with days as (
+    select d::date from generate_series(
+      (now() - (p_days || ' days')::interval)::date,
+      now()::date,
+      '1 day'::interval
+    ) d
+  )
+  select
+    days.d as day,
+    coalesce((
+      select sum(view_count_delta)
+      from interaction_log il
+      where il.seller_id = p_seller_id
+        and il.interaction_type = 'view'
+        and il.created_at::date = days.d
+    ), 0)::bigint + coalesce((
+      -- الحصيلة القديمة: إعلانات منشورة في هذا اليوم
+      select count(*) from listings l
+      where l.seller_id = p_seller_id
+        and l.status = 'published'
+        and l.created_at::date = days.d
+    ), 0) * 3 as views,
+    coalesce((
+      select sum(contact_count_delta)
+      from interaction_log il
+      where il.seller_id = p_seller_id
+        and il.interaction_type = 'contact'
+        and il.created_at::date = days.d
+    ), 0)::bigint as contacts,
+    (
+      select count(*) from listings l
+      where l.seller_id = p_seller_id
+        and l.status = 'published'
+        and l.created_at::date <= days.d
+    )::bigint as listings_published
+  from days
+  order by days.d asc;
+end; $$;
+
+-- 2) مؤشرات البائع العامة (KPIs)
+create or replace function seller_overall_kpis(p_seller_id uuid)
+returns table (
+  kpi text,
+  value_7d bigint,
+  value_30d bigint,
+  value_total bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  with my_listings as (
+    select id from listings l where l.seller_id = p_seller_id and l.status = 'published'
+  )
+  select * from (
+    values
+      ('مشاهدات الإعلانات',
+        (select coalesce(sum(view_count_delta), 0)::bigint from interaction_log where seller_id = p_seller_id and interaction_type = 'view' and created_at > now() - interval '7 days'),
+        (select coalesce(sum(view_count_delta), 0)::bigint from interaction_log where seller_id = p_seller_id and interaction_type = 'view' and created_at > now() - interval '30 days'),
+        (select coalesce(sum(view_count), 0)::bigint from listings where seller_id = p_seller_id)
+      ),
+      ('نقرات واتساب (الاتصالات)',
+        (select coalesce(sum(contact_count_delta), 0)::bigint from interaction_log where seller_id = p_seller_id and interaction_type = 'contact' and created_at > now() - interval '7 days'),
+        (select coalesce(sum(contact_count_delta), 0)::bigint from interaction_log where seller_id = p_seller_id and interaction_type = 'contact' and created_at > now() - interval '30 days'),
+        (select coalesce(sum(contact_click_count), 0)::bigint from listings where seller_id = p_seller_id)
+      ),
+      ('عدد الإعلانات',
+        (select count(*) from listings where seller_id = p_seller_id and created_at > now() - interval '7 days')::bigint,
+        (select count(*) from listings where seller_id = p_seller_id and created_at > now() - interval '30 days')::bigint,
+        (select count(*) from listings where seller_id = p_seller_id and status = 'published')::bigint
+      ),
+      ('التقييمات',
+        (select count(*) from reviews where seller_id = p_seller_id and status = 'published' and created_at > now() - interval '7 days')::bigint,
+        (select count(*) from reviews where seller_id = p_seller_id and status = 'published' and created_at > now() - interval '30 days')::bigint,
+        (select count(*) from reviews where seller_id = p_seller_id and status = 'published')::bigint
+      ),
+      ('التوصيات المجتمعية',
+        (select count(*) from vouches where seller_id = p_seller_id and created_at > now() - interval '7 days')::bigint,
+        (select count(*) from vouches where seller_id = p_seller_id and created_at > now() - interval '30 days')::bigint,
+        (select count(*) from vouches where seller_id = p_seller_id)::bigint
+      ),
+      ('ردود على احتياجاتي',
+        (select count(*) from need_responses where seller_id = p_seller_id and created_at > now() - interval '7 days')::bigint,
+        (select count(*) from need_responses where seller_id = p_seller_id and created_at > now() - interval '30 days')::bigint,
+        (select count(*) from need_responses where seller_id = p_seller_id)::bigint
+      )
+  ) as t(kpi, value_7d, value_30d, value_total);
+end; $$;
+
+-- 3) نسبة الأداء: أداء بائع مقارنةً بمتوسط باعة نفس الفئة
+create or replace function seller_performance_percentile(p_seller_id uuid)
+returns table (
+  percentile_label text,
+  percentile_value float4,
+  listings_count_avg float4,
+  view_count_avg float4,
+  contact_rate_avg float4,
+  seller_contact_rate float4
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  v_category int;
+  v_seller_views int;
+  v_seller_contacts int;
+  v_seller_contact_rate float4;
+  v_seller_listings int;
+  v_peer_count int;
+  v_avg_listings float4;
+  v_avg_views float4;
+  v_avg_contact_rate float4;
+  v_better_count int;
+begin
+  -- اختيار فئة البائع الأساسية (أكثر إعلانات له فيها)
+  select category_id into v_category
+  from listings
+  where seller_id = p_seller_id and status = 'published' and category_id is not null
+  group by category_id
+  order by count(*) desc
+  limit 1;
+
+  -- حساب البائع
+  select
+    coalesce(sum(view_count), 0)::int,
+    coalesce(sum(contact_click_count), 0)::int,
+    count(*)::int
+  into v_seller_views, v_seller_contacts, v_seller_listings
+  from listings
+  where seller_id = p_seller_id and status = 'published';
+
+  v_seller_contact_rate := case when v_seller_views > 0 then (v_seller_contacts::float4 / v_seller_views::float4) * 100 else 0 end;
+
+  -- مقاييس أقران الباعة بنفس الفئة (أو كل الباعة لو ما فيه فئة)
+  select
+    count(distinct l.seller_id),
+    avg(lc.listings_cnt),
+    avg(lc.views_sum),
+    avg(case when lc.views_sum > 0 then (lc.contacts_sum::float4 / lc.views_sum::float4) * 100 else 0 end)
+  into v_peer_count, v_avg_listings, v_avg_views, v_avg_contact_rate
+  from (
+    select
+      l.seller_id,
+      count(*) as listings_cnt,
+      coalesce(sum(l.view_count), 0) as views_sum,
+      coalesce(sum(l.contact_click_count), 0) as contacts_sum
+    from listings l
+    where l.status = 'published'
+      and (v_category is null or l.category_id = v_category)
+    group by l.seller_id
+  ) lc;
+
+  -- عدد الباعة اللي البائع الحالي أفضل منهم في معدل الاتصالات
+  select count(*) into v_better_count
+  from (
+    select
+      case when coalesce(sum(l.view_count), 0) > 0
+           then (coalesce(sum(l.contact_click_count), 0)::float4 / coalesce(sum(l.view_count), 1)::float4) * 100
+           else 0 end as peer_rate
+    from listings l
+    where l.status = 'published'
+      and (v_category is null or l.category_id = v_category)
+    group by l.seller_id
+  ) peers
+  where peers.peer_rate <= v_seller_contact_rate;
+
+  return query select
+    case
+      when v_peer_count = 0 then 'لا أقران كافٍ'
+      when v_better_count::float4 / v_peer_count::float4 >= 0.80 then 'أداء مميز 🌟'
+      when v_better_count::float4 / v_peer_count::float4 >= 0.50 then 'أفضل من المتوسط ✅'
+      when v_better_count::float4 / v_peer_count::float4 >= 0.25 then 'أقل بقليل من المتوسط'
+      else 'يحتاج تحسين ⚠️'
+    end::text as percentile_label,
+    case when v_peer_count > 0 then (v_better_count::float4 / v_peer_count::float4) * 100 else 0 end::float4 as percentile_value,
+    coalesce(v_avg_listings, 0) as listings_count_avg,
+    coalesce(v_avg_views, 0) as view_count_avg,
+    coalesce(v_avg_contact_rate, 0) as contact_rate_avg,
+    v_seller_contact_rate as seller_contact_rate;
+end; $$;
+
+revoke all on function seller_daily_stats(uuid,int) from anon, authenticated;
+grant execute on function seller_daily_stats(uuid,int) to service_role;
+
+revoke all on function seller_overall_kpis(uuid) from anon, authenticated;
+grant execute on function seller_overall_kpis(uuid) to service_role;
+
+revoke all on function seller_performance_percentile(uuid) from anon, authenticated;
+grant execute on function seller_performance_percentile(uuid) to service_role;
+
+-- المستخدم نفسه ما يقدر يستدعيها إلا عبر requireSeller على السيرفر
+
+
+-- ============================================================
+-- 00000000000038_weekly_polls_system
+-- ============================================================
+
+-- ============================================================
+-- نظام الاستفتاءات الأسبوعية (أفضل بائع الأسبوع)
+-- ============================================================
+
+create table if not exists polls (
+  id bigserial primary key,
+  title text not null,
+  description text,
+  week_start_date date not null,
+  week_end_date date not null,
+  status text not null default 'active' check (status in ('draft', 'active', 'closed')),
+  winner_seller_id uuid references profiles(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists polls_status_idx on polls(status);
+create index if not exists polls_week_idx on polls(week_start_date desc, week_end_date desc);
+
+create table if not exists poll_options (
+  id bigserial primary key,
+  poll_id bigint not null references polls(id) on delete cascade,
+  seller_id uuid not null references profiles(id) on delete cascade,
+  sort_order int not null default 0,
+  created_at timestamptz not null default now(),
+  unique(poll_id, seller_id)
+);
+
+create index if not exists poll_options_poll_idx on poll_options(poll_id);
+
+create table if not exists poll_votes (
+  id bigserial primary key,
+  poll_id bigint not null references polls(id) on delete cascade,
+  option_id bigint not null references poll_options(id) on delete cascade,
+  voter_id uuid not null references profiles(id) on delete cascade,
+  voted_at timestamptz not null default now(),
+  unique(poll_id, voter_id)
+);
+
+create index if not exists poll_votes_opt_idx on poll_votes(option_id);
+create index if not exists poll_votes_voter_idx on poll_votes(voter_id);
+
+-- RLS
+alter table polls enable row level security;
+alter table poll_options enable row level security;
+alter table poll_votes enable row level security;
+
+drop policy if exists "polls are visible to all authenticated" on polls;
+create policy "polls are visible to all authenticated"
+  on polls for select using (auth.role() = 'authenticated' and (status <> 'draft'));
+
+drop policy if exists "poll options are visible" on poll_options;
+create policy "poll options are visible"
+  on poll_options for select using (exists (select 1 from polls p where p.id = poll_id and auth.role() = 'authenticated'));
+
+drop policy if exists "users can see own votes" on poll_votes;
+create policy "users can see own votes"
+  on poll_votes for select using (voter_id = auth.uid() or exists (select 1 from profiles where id = auth.uid() and role = 'admin'));
+
+drop policy if exists "users can insert one vote per poll" on poll_votes;
+create policy "users can insert one vote per poll"
+  on poll_votes for insert with check (
+    voter_id = auth.uid() and
+    exists (select 1 from polls p where p.id = poll_id and p.status = 'active') and
+    not exists (select 1 from poll_votes pv where pv.poll_id = poll_votes.poll_id and pv.voter_id = auth.uid())
+  );
+
+-- دالة: إنهاء الاستفتاء وتحديث الفائز + شارة الفائز على البائع
+create or replace function close_poll_and_set_winner(p_poll_id bigint)
+returns jsonb
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_winner uuid;
+  v_winner_votes bigint;
+  v_out jsonb;
+begin
+  if not exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin') then
+    raise exception 'Unauthorized';
+  end if;
+
+  -- حساب الأكثر أصواتاً
+  select o.seller_id, count(v.id)
+    into v_winner, v_winner_votes
+  from poll_options o
+  left join poll_votes v on v.option_id = o.id
+  where o.poll_id = p_poll_id
+  group by o.id, o.seller_id
+  order by count(v.id) desc, o.id asc
+  limit 1;
+
+  -- تحديث الاستفتاء
+  update polls set status = 'closed', winner_seller_id = v_winner, updated_at = now() where id = p_poll_id;
+
+  -- إضافة بادج الفائز للبائع (لو العمود موجود)
+  if v_winner is not null and exists (
+    select 1 from information_schema.columns where table_name='profiles' and column_name='winner_badge_count'
+  ) then
+    update profiles set winner_badge_count = coalesce(winner_badge_count, 0) + 1 where id = v_winner;
+  elsif v_winner is not null then
+    raise notice 'profiles.winner_badge_count column not found — skipping badge increment';
+  end if;
+
+  v_out := jsonb_build_object(
+    'poll_id', p_poll_id,
+    'winner_seller_id', v_winner,
+    'votes', v_winner_votes
+  );
+  return v_out;
+end; $$;
+
+revoke all on function close_poll_and_set_winner(bigint) from anon, authenticated;
+grant execute on function close_poll_and_set_winner(bigint) to service_role;
+
+-- دالة: الحصول على نتائج استفتاء
+create or replace function poll_results(p_poll_id bigint)
+returns table (
+  option_id bigint,
+  seller_id uuid,
+  seller_name text,
+  seller_slug text,
+  votes_count bigint,
+  percent_of_total float4
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  v_total bigint;
+begin
+  select count(*) into v_total from poll_votes where poll_id = p_poll_id;
+  return query
+  select
+    o.id as option_id,
+    o.seller_id,
+    coalesce(p.business_name, p.full_name, p.id::text)::text as seller_name,
+    p.slug as seller_slug,
+    count(v.id)::bigint as votes_count,
+    case when v_total > 0 then (count(v.id)::float4 / v_total::float4) * 100 else 0 end as percent_of_total
+  from poll_options o
+  left join poll_votes v on v.option_id = o.id
+  left join profiles p on p.id = o.seller_id
+  where o.poll_id = p_poll_id
+  group by o.id, o.seller_id, p.business_name, p.full_name, p.slug
+  order by votes_count desc, o.sort_order asc, o.id asc;
+end; $$;
+
+grant execute on function poll_results(bigint) to authenticated;
+
+-- دالة: الاستفتاء النشط الحالي (عرض للزوار)
+create or replace function get_active_poll()
+returns table (
+  id bigint,
+  title text,
+  description text,
+  week_start_date date,
+  week_end_date date,
+  status text,
+  total_votes bigint,
+  my_vote_option_id bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  with current_poll as (
+    select p.id, p.title, p.description, p.week_start_date, p.week_end_date, p.status
+    from polls p
+    where p.status = 'active'
+    order by p.week_start_date desc
+    limit 1
+  )
+  select
+    cp.id, cp.title, cp.description, cp.week_start_date, cp.week_end_date, cp.status,
+    (select count(*) from poll_votes v where v.poll_id = cp.id)::bigint as total_votes,
+    (select v.option_id from poll_votes v where v.poll_id = cp.id and v.voter_id = auth.uid() limit 1) as my_vote_option_id
+  from current_poll cp;
+end; $$;
+
+grant execute on function get_active_poll() to authenticated;
+
+-- زر الإدمن: إنشاء استفتاء أسبوعي تلقائي (السبوع الحالي)
+create or replace function admin_create_weekly_poll(
+  p_title text default 'من هو أفضل بائع في الزلفي هذا الأسبوع؟',
+  p_description text default 'صوّت لبائعك المفضل الذي زوّنك بالمنتج والخدمة الممتازة هذا الأسبوع. نتائج الاستفتاء تظهر صباح يوم السبت.'
+)
+returns bigint
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_start date;
+  v_end date;
+  v_id bigint;
+begin
+  if not exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin') then
+    raise exception 'Unauthorized';
+  end if;
+
+  -- تبدأ الأحد = بداية الأسبوع في التقويم الإسلامي/السعودي; نختار الأحد القادم أو الحالي
+  v_start := date_trunc('week', now()::date + interval '1 day')::date - interval '1 day'; -- Sunday of current week
+  v_end := v_start + interval '6 days'; -- الصباح التالي للسبت = بعد 6 أيام من الأحد
+
+  insert into polls (title, description, week_start_date, week_end_date, status)
+  values (p_title, p_description, v_start, v_end, 'draft')
+  returning id into v_id;
+  return v_id;
+end; $$;
+
+revoke all on function admin_create_weekly_poll(text,text) from anon, authenticated;
+grant execute on function admin_create_weekly_poll(text,text) to service_role;
+
+
+-- ============================================================
+-- 00000000000039_favorites_system
+-- ============================================================
+
+-- ============================================================
+-- نظام المفضلة / قائمة الأمنيات
+-- ============================================================
+
+create table if not exists favorite_listings (
+  id bigserial primary key,
+  user_id uuid not null references profiles(id) on delete cascade,
+  listing_id uuid not null references listings(id) on delete cascade,
+  saved_at timestamptz not null default now(),
+  unique(user_id, listing_id)
+);
+
+create index if not exists favorite_listings_user_idx on favorite_listings(user_id);
+create index if not exists favorite_listings_listing_idx on favorite_listings(listing_id);
+
+alter table favorite_listings enable row level security;
+
+drop policy if exists "users see own favorites" on favorite_listings;
+create policy "users see own favorites"
+  on favorite_listings for select using (auth.uid() = user_id);
+
+drop policy if exists "users insert own favorites" on favorite_listings;
+create policy "users insert own favorites"
+  on favorite_listings for insert with check (
+    auth.uid() = user_id and
+    exists (select 1 from listings l where l.id = listing_id and l.status = 'published')
+  );
+
+drop policy if exists "users delete own favorites" on favorite_listings;
+create policy "users delete own favorites"
+  on favorite_listings for delete using (auth.uid() = user_id);
+
+-- دالة: عدد الإعلانات المفضلة لدى المستخدم
+create or replace function get_favorite_count(p_user_id uuid)
+returns bigint
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return (select count(*) from favorite_listings where user_id = p_user_id);
+end; $$;
+grant execute on function get_favorite_count(uuid) to authenticated;
+
+
+-- ============================================================
+-- 00000000000040_content_moderation
+-- ============================================================
+
+-- ============================================================
+-- نظام الإبلاغ عن المحتوى + تدقيق الإدارة
+-- ============================================================
+
+create table if not exists content_reports (
+  id bigserial primary key,
+  reporter_id uuid not null references profiles(id) on delete cascade,
+  target_type text not null check (target_type in ('listing', 'seller', 'review', 'comment', 'event', 'job', 'need', 'offer')),
+  target_id bigint not null,
+  reason_code text not null check (reason_code in (
+    'spam',               -- رسائل مزعجة / إعلانات مكررة
+    'inappropriate',      -- محتوى غير لائق أو للكبار فقط
+    'fraud',              -- نصب / احتيال
+    'wrong_price',        -- تسعير غير عادل / مخالف
+    'wrong_category',     -- تصنيف خاطئ
+    'duplicate',          -- تكرار مع إعلان آخر
+    'expired',            -- السلعة انتهت الصلاحية أو بيعت
+    'legal',              -- مخالفة قانونية / سجائر / أجهزة غير مسموح
+    'other'               -- أخرى
+  )),
+  details text,
+  status text not null default 'pending' check (status in ('pending', 'reviewing', 'resolved', 'rejected', 'escalated')),
+  resolution text,
+  action_taken text,
+  handled_by uuid references profiles(id) on delete set null,
+  handled_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists reports_status_idx on content_reports(status);
+create index if not exists reports_target_idx on content_reports(target_type, target_id);
+create index if not exists reports_reporter_idx on content_reports(reporter_id);
+
+alter table content_reports enable row level security;
+
+drop policy if exists "reporter sees own report" on content_reports;
+create policy "reporter sees own report"
+  on content_reports for select using (auth.uid() = reporter_id);
+
+drop policy if exists "authenticated can create report" on content_reports;
+create policy "authenticated can create report"
+  on content_reports for insert with check (auth.uid() = reporter_id and length(coalesce(details, '')) <= 2000);
+
+-- تقارير تظهر فقط للإدارة في select كامل — من خلال service role عبر صفحة الإدارة
+
+-- دالة: إحصائيات تقارير التدقيق للإدارة
+create or replace function moderation_stats()
+returns table (
+  kpi text,
+  val bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  if not exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin') then
+    raise exception 'Unauthorized';
+  end if;
+  return query select * from (values
+    ('pending',   (select count(*) from content_reports where status = 'pending')::bigint),
+    ('reviewing', (select count(*) from content_reports where status = 'reviewing')::bigint),
+    ('today',     (select count(*) from content_reports where created_at::date = now()::date)::bigint),
+    ('week',      (select count(*) from content_reports where created_at > now() - interval '7 days')::bigint),
+    ('rejected',  (select count(*) from content_reports where status = 'rejected')::bigint),
+    ('resolved',  (select count(*) from content_reports where status = 'resolved')::bigint)
+  ) t(kpi, val);
+end; $$;
+revoke all on function moderation_stats() from anon, authenticated;
+grant execute on function moderation_stats() to service_role;
+
+-- الأسباب المتاحة
+comment on column content_reports.reason_code is 'spam|inappropriate|fraud|wrong_price|wrong_category|duplicate|expired|legal|other';
+
+
+-- ============================================================
+-- 00000000000041_homepage_recommendations
+-- ============================================================
+
+-- ============================================================
+-- دوال التوصيات الذكية والساحة الرئيسية
+-- ============================================================
+
+-- 1) إعلانات ذات صلة بنفس الإعلان (نفس الفئة + نفس الحي أو نفس نطاق السعر)
+create or replace function get_related_listings(
+  p_listing_id uuid,
+  p_limit int default 8
+)
+returns table (
+  id uuid,
+  title text,
+  slug text,
+  price numeric,
+  neighborhood_name text,
+  category_name text,
+  view_count int,
+  contact_click_count int,
+  has_image boolean,
+  match_score float4,
+  status text,
+  created_at timestamptz
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  v_category int;
+  v_neighborhood int;
+  v_price numeric;
+begin
+  select category_id, neighborhood_id, price
+    into v_category, v_neighborhood, v_price
+  from listings l where l.id = p_listing_id;
+
+  return query
+  select
+    l.id,
+    l.title,
+    l.slug,
+    l.price,
+    n.name_ar as neighborhood_name,
+    c.name_ar as category_name,
+    l.view_count,
+    l.contact_click_count,
+    exists (select 1 from listing_images li where li.listing_id = l.id) as has_image,
+    (
+      (case when l.category_id = v_category then 0.55 else 0 end) +
+      (case when l.neighborhood_id = v_neighborhood then 0.25 else 0 end) +
+      (case
+        when v_price is not null and l.price is not null
+          and abs(l.price - v_price) / greatest(v_price, 1) <= 0.3
+        then 0.2
+        when v_price is null then 0.1
+        else 0 end
+      )
+    )::float4 as match_score,
+    l.status,
+    l.created_at
+  from listings l
+  left join neighborhoods n on n.id = l.neighborhood_id
+  left join categories c on c.id = l.category_id
+  where l.status = 'published'
+    and l.id <> p_listing_id
+    and (l.category_id = v_category or l.neighborhood_id = v_neighborhood
+         or (v_price is not null and l.price is not null
+             and abs(l.price - v_price) / greatest(v_price, 1) <= 0.5))
+  order by match_score desc, l.view_count desc, l.created_at desc
+  limit p_limit;
+end; $$;
+grant execute on function get_related_listings(bigint,int) to anon, authenticated;
+
+-- 2) أحدث الإعلانات المنشورة
+create or replace function home_recent_listings(p_limit int default 12)
+returns setof listings language sql stable security definer set search_path = public, pg_temp as $$
+  select * from listings l
+  where l.status = 'published'
+  order by l.created_at desc
+  limit p_limit;
+$$;
+grant execute on function home_recent_listings(int) to anon, authenticated;
+
+-- 3) أكثر الإعلانات مشاهدة
+create or replace function home_top_viewed(p_limit int default 8)
+returns setof listings language sql stable security definer set search_path = public, pg_temp as $$
+  select * from listings l
+  where l.status = 'published' and l.created_at > now() - interval '60 days'
+  order by l.view_count desc
+  limit p_limit;
+$$;
+grant execute on function home_top_viewed(int) to anon, authenticated;
+
+-- 4) أكثر الإعلانات اتصالات (معدل تحويل عالي = جودة)
+create or replace function home_top_contacts(p_limit int default 8)
+returns setof listings language sql stable security definer set search_path = public, pg_temp as $$
+  select * from listings l
+  where l.status = 'published'
+    and l.created_at > now() - interval '60 days'
+    and l.view_count >= 10
+  order by (l.contact_click_count::float4 / nullif(l.view_count, 0)) desc nulls last,
+           l.contact_click_count desc
+  limit p_limit;
+$$;
+grant execute on function home_top_contacts(int) to anon, authenticated;
+
+-- 5) الأحياء الأكثر نشاطاً + إحصائيات الساحة
+create or replace function home_neighborhoods_activity(p_limit int default 10)
+returns table (
+  id int,
+  name_ar text,
+  slug text,
+  listings_count bigint,
+  sellers_count bigint,
+  recent_views bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  select
+    n.id,
+    n.name_ar,
+    n.slug,
+    (select count(*) from listings l where l.neighborhood_id = n.id and l.status = 'published')::bigint as listings_count,
+    (select count(distinct l.seller_id) from listings l where l.neighborhood_id = n.id and l.status = 'published')::bigint as sellers_count,
+    coalesce((select sum(l.view_count) from listings l where l.neighborhood_id = n.id and l.status = 'published' and l.created_at > now() - interval '30 days'), 0)::bigint as recent_views
+  from neighborhoods n
+  order by listings_count desc, recent_views desc
+  limit p_limit;
+end; $$;
+grant execute on function home_neighborhoods_activity(int) to anon, authenticated;
+
+-- 6) إحصائيات عامة للساحة الرئيسية
+create or replace function home_overall_stats()
+returns table (
+  kpi text,
+  val bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query select * from (values
+    ('listings_total', (select count(*) from listings where status = 'published')::bigint),
+    ('sellers_total', (select count(distinct seller_id) from listings where status = 'published')::bigint),
+    ('listings_week', (select count(*) from listings where status = 'published' and created_at > now() - interval '7 days')::bigint),
+    ('categories_total', (select count(*) from categories where parent_id is null)::bigint),
+    ('neighborhoods_total', (select count(*) from neighborhoods)::bigint),
+    ('contacts_week', (select coalesce(sum(contact_count_delta), 0)::bigint from interaction_log where interaction_type = 'contact' and created_at > now() - interval '7 days'))
+  ) t(kpi, val);
+end; $$;
+grant execute on function home_overall_stats() to anon, authenticated;
+
+-- 7) أكثر الفئات نشاطاً مع عدد الإعلانات
+create or replace function home_top_categories(p_limit int default 12)
+returns table (
+  id int,
+  name_ar text,
+  slug text,
+  parent_id int,
+  icon_emoji text,
+  listings_count bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  select
+    c.id,
+    c.name_ar,
+    c.slug,
+    c.parent_id,
+    c.icon_emoji,
+    (select count(*) from listings l where l.category_id = c.id and l.status = 'published')::bigint as listings_count
+  from categories c
+  order by listings_count desc, c.name_ar asc
+  limit p_limit;
+end; $$;
+grant execute on function home_top_categories(int) to anon, authenticated;
+
+
+-- ============================================================
+-- 00000000000042_deals_system
+-- ============================================================
+
+-- ============================================================
+-- نظام الصفقات والتعاقد بين البائع والعميل + شارة المعاملات
+-- ============================================================
+
+create table if not exists deals (
+  id bigserial primary key,
+  listing_id uuid references listings(id) on delete set null,
+  seller_id uuid not null references profiles(id) on delete cascade,
+  buyer_id uuid not null references profiles(id) on delete cascade,
+  title text,
+  description text,
+  price_agreed_sar numeric(12, 2),
+  status text not null default 'pending'
+    check (status in (
+      'pending',       -- انتظار موافقة البائع
+      'rejected',      -- رفض البائع
+      'accepted',      -- قبلها البائع (جاري التنفيذ)
+      'buyer_confirmed', -- العميل أكد الاستلام
+      'completed',     -- (اختياري) البائع أكمل الأوراق والدفع - النهائي
+      'disputed',      -- خصومة - تحتاج تدخل إدارة
+      'cancelled'      -- ألغى أحد الطرفين
+    )),
+  rejected_reason text,
+  dispute_reason text,
+  cancelled_by uuid references profiles(id) on delete set null,
+  cancelled_reason text,
+  accepted_at timestamptz,
+  completed_at timestamptz,
+  disputed_at timestamptz,
+  rejected_at timestamptz,
+  cancelled_at timestamptz,
+  delivery_notes text,
+  deadline_date date,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists deals_seller_idx on deals(seller_id, status, created_at desc);
+create index if not exists deals_buyer_idx on deals(buyer_id, status, created_at desc);
+create index if not exists deals_listing_idx on deals(listing_id);
+create index if not exists deals_status_idx on deals(status);
+
+alter table deals enable row level security;
+
+drop policy if exists "parties see their own deals" on deals;
+create policy "parties see their own deals"
+  on deals for select using (auth.uid() = buyer_id or auth.uid() = seller_id);
+
+drop policy if exists "buyer creates deal" on deals;
+create policy "buyer creates deal"
+  on deals for insert with check (
+    auth.uid() = buyer_id and
+    status = 'pending' and
+    exists (
+      select 1 from listings l
+      where l.id = listing_id and l.status = 'published'
+    )
+  );
+
+drop policy if exists "seller updates deal status" on deals;
+create policy "seller updates deal status"
+  on deals for update using (auth.uid() = seller_id) with check (
+    auth.uid() = seller_id and
+    (
+      -- seller allowed transitions: pending → accepted | rejected ; accepted → completed
+      (old.status = 'pending' and new.status in ('accepted', 'rejected')) or
+      (old.status = 'accepted' and new.status = 'completed') or
+      (old.status = 'buyer_confirmed' and new.status in ('completed', 'disputed'))
+    )
+  );
+
+drop policy if exists "buyer updates deal status (confirm/cancel)" on deals;
+create policy "buyer updates deal status (confirm/cancel)"
+  on deals for update using (auth.uid() = buyer_id) with check (
+    auth.uid() = buyer_id and
+    (
+      (old.status in ('pending', 'accepted') and new.status = 'cancelled') or
+      (old.status = 'accepted' and new.status in ('buyer_confirmed', 'disputed')) or
+      (old.status = 'buyer_confirmed' and new.status = 'disputed')
+    )
+  );
+
+-- دالة: عدد صفقات البائع الناجحة المكتملة (للشارة)
+create or replace function seller_completed_deals(p_seller_id uuid)
+returns table (
+  completed_count bigint,
+  total_revenue_sar numeric,
+  in_progress_count bigint,
+  disputed_count bigint,
+  last30d_completed bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  select
+    coalesce((select count(*) from deals d where d.seller_id = p_seller_id and d.status in ('completed', 'buyer_confirmed')), 0)::bigint as completed_count,
+    coalesce((select sum(d.price_agreed_sar) from deals d where d.seller_id = p_seller_id and d.status in ('completed', 'buyer_confirmed')), 0)::numeric as total_revenue_sar,
+    coalesce((select count(*) from deals d where d.seller_id = p_seller_id and d.status in ('accepted', 'pending')), 0)::bigint as in_progress_count,
+    coalesce((select count(*) from deals d where d.seller_id = p_seller_id and d.status = 'disputed'), 0)::bigint as disputed_count,
+    coalesce((select count(*) from deals d where d.seller_id = p_seller_id and d.status in ('completed', 'buyer_confirmed') and d.updated_at > now() - interval '30 days'), 0)::bigint as last30d_completed;
+end; $$;
+grant execute on function seller_completed_deals(uuid) to anon, authenticated;
+
+-- Trigger: تحديث updated_at
+create or replace function deals_set_updated() returns trigger language plpgsql as $$
+begin
+  new.updated_at := now();
+  if new.status = 'accepted' and old.status <> 'accepted' then new.accepted_at = now(); end if;
+  if new.status = 'completed' and old.status <> 'completed' then new.completed_at = now(); end if;
+  if new.status = 'disputed' and old.status <> 'disputed' then new.disputed_at = now(); end if;
+  if new.status = 'rejected' and old.status <> 'rejected' then new.rejected_at = now(); end if;
+  if new.status = 'cancelled' and old.status <> 'cancelled' then new.cancelled_at = now(); end if;
+  return new;
+end; $$;
+
+drop trigger if exists deals_update_trigger on deals;
+create trigger deals_update_trigger before update on deals
+  for each row execute function deals_set_updated();
+
+
+-- ============================================================
+-- 00000000000043_premium_tiers
+-- ============================================================
+
+-- ============================================================
+-- نظام العضويات المميزة للبائعين (Silver/Gold/Diamond)
+-- ============================================================
+
+create type if not exists seller_tier as enum ('free', 'silver', 'gold', 'diamond');
+
+do $$ begin
+  alter type seller_tier owner to postgres;
+exception when others then null; end $$;
+
+create table if not exists seller_subscriptions (
+  id bigserial primary key,
+  seller_id uuid not null unique references sellers(id) on delete cascade,
+  tier seller_tier not null default 'free',
+  active_listing_limit integer not null default 10,
+  can_featured_ad boolean not null default false,
+  featured_quota_monthly integer not null default 0,
+  features_used_featured integer not null default 0,
+  premium_badge_level smallint not null default 0,
+  starts_at timestamptz,
+  expires_at timestamptz,
+  auto_renew boolean not null default false,
+  payment_provider text,
+  payment_reference text,
+  amount_paid_sar numeric(10, 2),
+  status text not null default 'active'
+    check (status in ('active', 'grace', 'expired', 'cancelled', 'refunded')),
+  cancellation_reason text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists seller_subs_tier_idx on seller_subscriptions(tier, status);
+create index if not exists seller_subs_expires_idx on seller_subscriptions(expires_at) where status = 'active';
+
+alter table seller_subscriptions enable row level security;
+
+drop policy if exists "seller sees own subscription" on seller_subscriptions;
+create policy "seller sees own subscription"
+  on seller_subscriptions for select using (auth.uid() = seller_id);
+
+drop policy if exists "seller self-updates only permitted fields" on seller_subscriptions;
+create policy "seller self-updates only permitted fields"
+  on seller_subscriptions for update using (auth.uid() = seller_id) with check (
+    auth.uid() = seller_id and
+    new.tier = old.tier and
+    new.active_listing_limit = old.active_listing_limit and
+    new.can_featured_ad = old.can_featured_ad and
+    new.featured_quota_monthly = old.featured_quota_monthly and
+    new.premium_badge_level = old.premium_badge_level and
+    new.amount_paid_sar = old.amount_paid_sar and
+    new.status = old.status
+    -- فقط auto_renew و cancellation_reason يُسمح بالتعديل من البائع
+  );
+
+-- جدول إعلانات "مميزة"
+create table if not exists featured_listings (
+  id bigserial primary key,
+  listing_id uuid not null unique references listings(id) on delete cascade,
+  seller_id uuid not null references sellers(id) on delete cascade,
+  starts_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '7 days'),
+  note text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists featured_active_idx on featured_listings(listing_id)
+  where starts_at <= now() and expires_at > now();
+
+alter table featured_listings enable row level security;
+
+drop policy if exists "public can read active featured" on featured_listings;
+create policy "public can read active featured"
+  on featured_listings for select using (starts_at <= now() and expires_at > now());
+
+drop policy if exists "seller manages own featured" on featured_listings;
+create policy "seller manages own featured"
+  on featured_listings for all using (auth.uid() = seller_id) with check (auth.uid() = seller_id);
+
+-- ============================================================
+-- دوال مساعدة
+-- ============================================================
+
+create or replace function get_seller_subscription(p_seller_id uuid)
+returns table (
+  tier seller_tier,
+  active_listing_limit integer,
+  can_featured_ad boolean,
+  featured_quota_monthly integer,
+  premium_badge_level smallint,
+  status text,
+  days_left bigint,
+  expires_at timestamptz
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  select
+    coalesce(s.tier, 'free')::seller_tier,
+    coalesce(s.active_listing_limit, 10),
+    coalesce(s.can_featured_ad, false),
+    coalesce(s.featured_quota_monthly, 0),
+    coalesce(s.premium_badge_level, 0),
+    coalesce(s.status, 'active'),
+    (case
+      when s.expires_at is null or s.status <> 'active' then null
+      else extract(day from (s.expires_at - now()))::bigint
+     end),
+    s.expires_at
+  from (select 1) g
+  left join seller_subscriptions s on s.seller_id = p_seller_id
+  limit 1;
+end; $$;
+grant execute on function get_seller_subscription(uuid) to anon, authenticated;
+
+-- دالة مساعدة: ترتيب بونص العضوية (تُستخدم في ORDER BY للبحث والرئيسية)
+create or replace function tier_weight(t seller_tier) returns smallint
+language sql immutable as $$
+  select case t
+    when 'diamond' then 40
+    when 'gold' then 25
+    when 'silver' then 12
+    else 0
+  end::smallint;
+$$;
+grant execute on function tier_weight(seller_tier) to anon, authenticated;
+
+-- دالة: هل البائع تجاوز حد الإعلانات؟
+create or replace function can_publish_listing(p_seller_id uuid)
+returns table (allowed boolean, current_count bigint, tier_limit integer)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  cur_cnt bigint;
+  lim integer;
+begin
+  cur_cnt := (select coalesce(count(*), 0)::bigint from listings where seller_id = p_seller_id and status = 'published');
+  lim := (select coalesce(active_listing_limit, 10) from seller_subscriptions where seller_id = p_seller_id limit 1);
+  if lim is null then lim := 10; end if;
+  return query select (cur_cnt < lim) as allowed, cur_cnt, lim;
+end; $$;
+grant execute on function can_publish_listing(uuid) to authenticated;
+
+-- Trigger: تحديث updated_at في subscriptions
+create or replace function seller_subs_set_updated() returns trigger language plpgsql as $$
+begin new.updated_at := now(); return new; end; $$;
+
+drop trigger if exists seller_subs_update_trigger on seller_subscriptions;
+create trigger seller_subs_update_trigger before update on seller_subscriptions
+  for each row execute function seller_subs_set_updated();
+
+-- Insert row for all existing sellers as free tier (سحب خفيف)
+insert into seller_subscriptions (seller_id, tier, active_listing_limit, status)
+select id, 'free', 10, 'active' from sellers s
+where not exists (select 1 from seller_subscriptions ss where ss.seller_id = s.id);
+
+
+-- ============================================================
+-- 00000000000045_inapp_chat
+-- ============================================================
+
+-- ============================================================
+-- نظام الدردشة الداخلية بين البائع والعميل (In-App Chat)
+-- ============================================================
+
+create table if not exists chat_threads (
+  id bigserial primary key,
+  deal_id bigint references deals(id) on delete set null,
+  listing_id uuid references listings(id) on delete set null,
+  buyer_id uuid not null references profiles(id) on delete cascade,
+  seller_id uuid not null references profiles(id) on delete cascade,
+  subject text,
+  created_at timestamptz not null default now(),
+  last_message_at timestamptz,
+  last_message_body text,
+  last_message_sender_id uuid references profiles(id) on delete set null,
+  unread_buyer_count integer not null default 0,
+  unread_seller_count integer not null default 0,
+  archived_by_buyer boolean not null default false,
+  archived_by_seller boolean not null default false,
+  check (buyer_id <> seller_id)
+);
+
+create index if not exists chat_threads_buyer_idx on chat_threads(buyer_id, last_message_at desc) where not archived_by_buyer;
+create index if not exists chat_threads_seller_idx on chat_threads(seller_id, last_message_at desc) where not archived_by_seller;
+create unique index if not exists chat_threads_pair_listing_unq
+  on chat_threads(buyer_id, seller_id) where listing_id is null and deal_id is null;
+create unique index if not exists chat_threads_pair_listing_with_listing_unq
+  on chat_threads(buyer_id, seller_id, listing_id) where listing_id is not null;
+create unique index if not exists chat_threads_pair_deal_unq
+  on chat_threads(deal_id) where deal_id is not null;
+
+alter table chat_threads enable row level security;
+
+drop policy if exists "chat parties see their threads" on chat_threads;
+create policy "chat parties see their threads"
+  on chat_threads for select using (auth.uid() = buyer_id or auth.uid() = seller_id);
+
+drop policy if exists "chat parties update unread & archive flags" on chat_threads;
+create policy "chat parties update unread & archive flags"
+  on chat_threads for update using (auth.uid() = buyer_id or auth.uid() = seller_id) with check (
+    auth.uid() = buyer_id or auth.uid() = seller_id
+    -- لا يسمح بتغيير الحقول الأخرى (sensible fields immutable)
+    and new.buyer_id = old.buyer_id
+    and new.seller_id = old.seller_id
+    and new.deal_id is not distinct from old.deal_id
+    and new.listing_id is not distinct from old.listing_id
+    and new.subject is not distinct from old.subject
+    and new.created_at = old.created_at
+  );
+
+drop policy if exists "chat parties create threads between them" on chat_threads;
+create policy "chat parties create threads between them"
+  on chat_threads for insert with check (
+    -- أحد الطرفين هو من يدير الإدراج
+    (auth.uid() = buyer_id or auth.uid() = seller_id)
+    -- والطرف الآخر يختلف عنه
+    and buyer_id <> seller_id
+    -- لا يوجد deal_id يخص طرف ثالث (مضمون ب fk ولكن نحفظ الصحة)
+  );
+
+grant select, insert, update on chat_threads to authenticated;
+
+-- جدول الرسائل الفردية
+create table if not exists chat_messages (
+  id bigserial primary key,
+  thread_id bigint not null references chat_threads(id) on delete cascade,
+  sender_id uuid not null references profiles(id) on delete cascade,
+  body text not null check (char_length(body) between 1 and 5000),
+  created_at timestamptz not null default now(),
+  read_by_buyer boolean not null default false,
+  read_by_seller boolean not null default false,
+  attachment_path text,
+  attachment_meta jsonb default '{}'::jsonb,
+  system_event text null -- e.g., "deal_created", "deal_status_changed"
+);
+
+create index if not exists chat_msgs_thread_idx on chat_messages(thread_id, created_at desc);
+create index if not exists chat_msgs_sender_idx on chat_messages(sender_id);
+
+alter table chat_messages enable row level security;
+
+drop policy if exists "chat parties read messages of their thread" on chat_messages;
+create policy "chat parties read messages of their thread"
+  on chat_messages for select using (
+    exists (
+      select 1 from chat_threads t
+      where t.id = thread_id and (t.buyer_id = auth.uid() or t.seller_id = auth.uid())
+    )
+  );
+
+drop policy if exists "chat parties insert messages in thread" on chat_messages;
+create policy "chat parties insert messages in thread"
+  on chat_messages for insert with check (
+    auth.uid() = sender_id and
+    exists (
+      select 1 from chat_threads t
+      where t.id = thread_id and (t.buyer_id = auth.uid() or t.seller_id = auth.uid())
+    )
+  );
+
+drop policy if exists "chat parties mark messages read" on chat_messages;
+create policy "chat parties mark messages read"
+  on chat_messages for update using (
+    exists (
+      select 1 from chat_threads t
+      where t.id = thread_id and (t.buyer_id = auth.uid() or t.seller_id = auth.uid())
+    )
+  ) with check (
+    -- يُسمح فقط بتبديل أعلام القراءة + المرفقات غير قابلة للتغيير
+    new.id = old.id and
+    new.thread_id = old.thread_id and
+    new.sender_id = old.sender_id and
+    new.body = old.body and
+    new.created_at = old.created_at and
+    new.attachment_path is not distinct from old.attachment_path and
+    new.attachment_meta is not distinct from old.attachment_meta and
+    new.system_event is not distinct from old.system_event
+  );
+
+grant select, insert, update on chat_messages to authenticated;
+
+-- ============================================================
+-- Trigger تحديث أعداد غير المقروءة وآخر رسالة في الـ thread
+-- ============================================================
+create or replace function chat_thread_denorm() returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  t record;
+  is_buyer boolean;
+  is_seller boolean;
+begin
+  if tg_op = 'INSERT' then
+    select * into t from chat_threads where id = new.thread_id;
+    if found then
+      is_buyer  := (new.sender_id = t.buyer_id);
+      is_seller := (new.sender_id = t.seller_id);
+      update chat_threads
+      set
+        last_message_at = now(),
+        last_message_body = case when new.system_event is not null then null else left(new.body, 240) end,
+        last_message_sender_id = new.sender_id,
+        unread_buyer_count  = case when is_seller then unread_buyer_count + 1  else unread_buyer_count end,
+        unread_seller_count = case when is_buyer  then unread_seller_count + 1 else unread_seller_count end
+      where id = new.thread_id;
+    end if;
+  end if;
+  return null;
+end; $$;
+
+drop trigger if exists chat_messages_after_ins on chat_messages;
+create trigger chat_messages_after_ins after insert on chat_messages
+  for each row execute function chat_thread_denorm();
+
+grant execute on function chat_thread_denorm() to authenticated;
+
+-- دالة مساعدة: إعادة ضبط عداد غير المقروء للطرف عند فتح المحادثة
+create or replace function chat_mark_thread_read(p_thread_id bigint)
+returns void language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  uid uuid := auth.uid();
+  t record;
+begin
+  if uid is null then return; end if;
+  select * into strict t from chat_threads where id = p_thread_id;
+  if uid = t.buyer_id then
+    update chat_threads set unread_buyer_count = 0 where id = p_thread_id;
+    update chat_messages set read_by_buyer = true where thread_id = p_thread_id and not read_by_buyer;
+  elsif uid = t.seller_id then
+    update chat_threads set unread_seller_count = 0 where id = p_thread_id;
+    update chat_messages set read_by_seller = true where thread_id = p_thread_id and not read_by_seller;
+  end if;
+end; $$;
+grant execute on function chat_mark_thread_read(bigint) to authenticated;
+
+-- دالة مساعدة لجلب أو إنشاء محادثة بين طرفين عند فتح زر "دردشة" من صفحة الإعلان
+create or replace function chat_upsert_thread(
+  p_listing_id uuid,
+  p_deal_id bigint,
+  p_buyer_id uuid,
+  p_seller_id uuid,
+  p_subject text default null
+) returns bigint language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  uid uuid := auth.uid();
+  out_id bigint;
+  the_subject text;
+begin
+  if uid is null or (uid <> p_buyer_id and uid <> p_seller_id) then
+    raise exception 'غير مصرح به';
+  end if;
+  if p_buyer_id = p_seller_id then raise exception 'لا يمكن الدردشة مع نفسك'; end if;
+
+  if p_deal_id is not null then
+    insert into chat_threads(deal_id, buyer_id, seller_id, subject, last_message_at)
+    values (p_deal_id, p_buyer_id, p_seller_id, coalesce(p_subject, 'محادثة صفقة'), coalesce((select created_at from deals where id = p_deal_id), now()))
+    on conflict (deal_id) where deal_id is not null do update set subject = excluded.subject
+    returning id into out_id;
+    return out_id;
+  end if;
+
+  if p_listing_id is not null then
+    -- نختار العنوان من listing لو متوفر
+    the_subject := coalesce(p_subject, (select 'استفسار حول: ' || title from listings where id = p_listing_id));
+    insert into chat_threads(listing_id, buyer_id, seller_id, subject, last_message_at)
+    values (p_listing_id, p_buyer_id, p_seller_id, the_subject, now())
+    on conflict (buyer_id, seller_id, listing_id) where listing_id is not null do update set subject = excluded.subject
+    returning id into out_id;
+    return out_id;
+  end if;
+
+  -- بدون listing/deal: محادثة عامة بين الطرفين
+  the_subject := coalesce(p_subject, 'محادثة خاصة');
+  insert into chat_threads(buyer_id, seller_id, subject, last_message_at)
+  values (p_buyer_id, p_seller_id, the_subject, now())
+  on conflict (buyer_id, seller_id) where listing_id is null and deal_id is null do update set subject = excluded.subject
+  returning id into out_id;
+  return out_id;
+end; $$;
+grant execute on function chat_upsert_thread(bigint,bigint,uuid,uuid,text) to authenticated;
+
+
+-- ============================================================
+-- 00000000000046_silent_bidding
+-- ============================================================
+
+-- ============================================================
+-- نظام العروض المضادة (Best Offer / Silent Bidding)
+-- ============================================================
+
+create table if not exists listing_offers (
+  id bigserial primary key,
+  listing_id uuid not null references listings(id) on delete cascade,
+  offerer_id uuid not null references profiles(id) on delete cascade,
+  seller_id uuid not null references profiles(id) on delete cascade,
+  offer_price_sar numeric(12,2) not null check (offer_price_sar > 0),
+  message text,
+  status text not null default 'pending'
+    check (status in (
+      'pending', 'accepted', 'rejected', 'countered', 'expired', 'cancelled', 'deal_created'
+    )),
+  counter_price_sar numeric(12,2) check (counter_price_sar is null or counter_price_sar > 0),
+  counter_message text,
+  valid_until timestamptz not null default (now() + interval '24 hours'),
+  counter_valid_until timestamptz,
+  auto_expired_at timestamptz,
+  accepted_at timestamptz,
+  rejected_at timestamptz,
+  countered_at timestamptz,
+  cancelled_at timestamptz,
+  deal_id bigint references deals(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (offerer_id <> seller_id)
+);
+
+create index if not exists offers_seller_idx on listing_offers(seller_id, status, created_at desc);
+create index if not exists offers_buyer_idx on listing_offers(offerer_id, status, created_at desc);
+create index if not exists offers_listing_idx on listing_offers(listing_id, status);
+create index if not exists offers_expire_idx on listing_offers(status, valid_until)
+  where status in ('pending', 'countered');
+
+alter table listing_offers enable row level security;
+
+drop policy if exists "offers parties see their own" on listing_offers;
+create policy "offers parties see their own"
+  on listing_offers for select using (auth.uid() = offerer_id or auth.uid() = seller_id);
+
+drop policy if exists "offerer inserts offers" on listing_offers;
+create policy "offerer inserts offers"
+  on listing_offers for insert with check (
+    auth.uid() = offerer_id and
+    status = 'pending' and
+    deal_id is null and
+    counter_price_sar is null and
+    exists (
+      select 1 from listings l where l.id = listing_id and l.status = 'published'
+    ) and
+    not exists (
+      select 1 from listing_offers x
+      where x.listing_id = listing_offers.listing_id
+        and x.offerer_id = listing_offers.offerer_id
+        and x.status = 'pending'
+        and x.created_at > now() - interval '15 minutes'
+    )
+  );
+
+drop policy if exists "offerer cancels pending offers" on listing_offers;
+create policy "offerer cancels pending offers"
+  on listing_offers for update using (
+    auth.uid() = offerer_id
+  ) with check (
+    auth.uid() = offerer_id and
+    old.status in ('pending', 'countered') and
+    new.status in ('cancelled')
+    and new.offer_price_sar = old.offer_price_sar
+    and new.listing_id = old.listing_id
+    and new.offerer_id = old.offerer_id
+    and new.seller_id = old.seller_id
+    and new.counter_price_sar is not distinct from old.counter_price_sar
+  );
+
+drop policy if exists "seller responds to offers" on listing_offers;
+create policy "seller responds to offers"
+  on listing_offers for update using (auth.uid() = seller_id) with check (
+    auth.uid() = seller_id and
+    -- immutable keys
+    new.offer_price_sar = old.offer_price_sar and
+    new.listing_id = old.listing_id and
+    new.offerer_id = old.offerer_id and
+    new.seller_id = old.seller_id and
+    (
+      (old.status = 'pending' and new.status in ('accepted', 'rejected', 'countered')) or
+      (old.status = 'countered' and new.status in ('accepted', 'rejected'))
+    )
+  );
+
+grant select, insert, update on listing_offers to authenticated;
+
+-- دالة: عدد العروض الواردة للبائع حسب الحالة
+create or replace function seller_offers_summary(p_seller_id uuid)
+returns table (
+  pending_count bigint,
+  countered_count bigint,
+  today_received bigint,
+  total_received bigint,
+  accepted_count bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  select
+    coalesce((select count(*) from listing_offers where seller_id = p_seller_id and status = 'pending'), 0)::bigint,
+    coalesce((select count(*) from listing_offers where seller_id = p_seller_id and status = 'countered'), 0)::bigint,
+    coalesce((select count(*) from listing_offers where seller_id = p_seller_id and created_at > now() - interval '1 day'), 0)::bigint,
+    coalesce((select count(*) from listing_offers where seller_id = p_seller_id), 0)::bigint,
+    coalesce((select count(*) from listing_offers where seller_id = p_seller_id and status in ('accepted', 'deal_created')), 0)::bigint;
+end; $$;
+grant execute on function seller_offers_summary(uuid) to anon, authenticated;
+
+-- دالة: التحقق التلقائي من انتهاء صلاحية العروض
+create or replace function expire_stale_offers()
+returns table (expired_count bigint)
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  cnt bigint;
+begin
+  with expired_rows as (
+    update listing_offers
+    set status = 'expired',
+        auto_expired_at = now(),
+        updated_at = now()
+    where status in ('pending', 'countered')
+      and valid_until < now()
+      and (counter_valid_until is null or counter_valid_until < now())
+    returning 1
+  ) select count(*) into cnt from expired_rows;
+  expired_count := cnt;
+  return next;
+end; $$;
+grant execute on function expire_stale_offers() to authenticated, service_role;
+
+-- Trigger: set updated_at + حالة قبول تحديث التواريخ
+create or replace function listing_offers_set_timestamps()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at := now();
+  if new.status = 'accepted' and old.status <> 'accepted' then new.accepted_at = now(); end if;
+  if new.status = 'rejected' and old.status <> 'rejected' then new.rejected_at = now(); end if;
+  if new.status = 'countered' and old.status <> 'countered' then new.countered_at := now(); end if;
+  if new.status = 'cancelled' and old.status <> 'cancelled' then new.cancelled_at := now(); end if;
+  return new;
+end; $$;
+
+drop trigger if exists listing_offers_ts_trigger on listing_offers;
+create trigger listing_offers_ts_trigger before update on listing_offers
+  for each row execute function listing_offers_set_timestamps();
+
+
+-- ============================================================
+-- 00000000000047_payment_proofs
+-- ============================================================
+
+-- ============================================================
+-- إيصالات الدفع والتحويل البنكي عبر Supabase Storage
+-- ============================================================
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('payment-proofs', 'payment-proofs', false, 10485760,
+  array['image/jpeg', 'image/png', 'image/webp', 'application/pdf'])
+on conflict (id) do nothing;
+
+-- قراءة إيصالات الدفع: فقط طرفي الصفقة + الأدمن
+drop policy if exists "payment_proofs parties read" on storage.objects;
+create policy "payment_proofs parties read" on storage.objects
+  for select using (
+    bucket_id = 'payment-proofs'
+    and (
+      -- {deal_id}/{buyer_id|seller_id}/{...}  —  أولاً نسمح للـ service_role بالوصول إذا ما استدعيته
+      -- لكن ك authenticated (جلسة المستخدم) نتحقق عبر الاستعلام:
+      exists (
+        select 1 from deals d
+        where  d.id::text = (storage.foldername(name))[1]
+          and (d.buyer_id = auth.uid() or d.seller_id = auth.uid())
+      )
+      or exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+    )
+  );
+
+drop policy if exists "payment_proofs buyer/seller upload their own proof" on storage.objects;
+create policy "payment_proofs buyer/seller upload their own proof" on storage.objects
+  for insert with check (
+    bucket_id = 'payment-proofs'
+    and (storage.foldername(name))[2] = auth.uid()::text
+    and exists (
+      select 1 from deals d
+      where d.id::text = (storage.foldername(name))[1]
+        and (d.buyer_id = auth.uid() or d.seller_id = auth.uid())
+        and d.status in ('pending', 'accepted', 'buyer_confirmed')
+    )
+  );
+
+drop policy if exists "payment_proofs owner delete" on storage.objects;
+create policy "payment_proofs owner delete" on storage.objects
+  for delete using (
+    bucket_id = 'payment-proofs'
+    and (storage.foldername(name))[2] = auth.uid()::text
+  );
+
+create table if not exists deal_payments (
+  id bigserial primary key,
+  deal_id bigint not null references deals(id) on delete cascade,
+  submitted_by uuid not null references profiles(id) on delete cascade,
+  paid_by_buyer boolean not null default false,
+  payment_method text not null check (payment_method in ('bank_transfer','stc_pay','cash_on_delivery','other')),
+  amount_sar numeric(12,2) not null check (amount_sar > 0),
+  reference_number text,
+  bank_name text,
+  transfer_date date,
+  payer_account_last4 text,
+  proof_storage_path text,
+  proof_mime_type text,
+  proof_filename text,
+  proof_size_bytes bigint,
+  notes text,
+  verified_at timestamptz,
+  verified_by uuid references profiles(id) on delete set null,
+  verification_notes text,
+  status text not null default 'submitted'
+    check (status in ('submitted', 'verified', 'rejected', 'refunded', 'cancelled')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (paid_by_buyer = true or (paid_by_buyer = false and true))
+);
+
+create index if not exists deal_payments_deal_idx on deal_payments(deal_id, created_at desc);
+create index if not exists deal_payments_user_idx on deal_payments(submitted_by, created_at desc);
+create index if not exists deal_payments_status_idx on deal_payments(status) where status <> 'verified';
+
+alter table deal_payments enable row level security;
+
+drop policy if exists "deal_payments parties read" on deal_payments;
+create policy "deal_payments parties read"
+  on deal_payments for select using (
+    submitted_by = auth.uid() or
+    exists (
+      select 1 from deals d
+      where d.id = deal_id and (d.buyer_id = auth.uid() or d.seller_id = auth.uid())
+    )
+  );
+
+drop policy if exists "deal_payments party insert" on deal_payments;
+create policy "deal_payments party insert"
+  on deal_payments for insert with check (
+    submitted_by = auth.uid() and
+    status = 'submitted' and
+    verified_at is null and
+    verified_by is null and
+    exists (
+      select 1 from deals d
+      where d.id = deal_id
+        and (d.buyer_id = auth.uid() or d.seller_id = auth.uid())
+        and d.status in ('pending', 'accepted', 'buyer_confirmed')
+    )
+  );
+
+drop policy if exists "deal_payments uploader can cancel or edit notes" on deal_payments;
+create policy "deal_payments uploader can cancel or edit notes"
+  on deal_payments for update using (
+    submitted_by = auth.uid()
+  ) with check (
+    submitted_by = auth.uid()
+    and status in ('submitted', 'cancelled')
+    and (
+      (old.status = 'submitted' and new.status in ('submitted', 'cancelled'))
+      or (old.status = 'cancelled' and new.status = 'cancelled')
+    )
+    and old.amount_sar = new.amount_sar
+    and old.payment_method = new.payment_method
+    and old.reference_number is not distinct from new.reference_number
+    and old.deal_id = new.deal_id
+    and old.submitted_by = new.submitted_by
+  );
+
+drop policy if exists "deal_payments admin verify" on deal_payments;
+create policy "deal_payments admin verify"
+  on deal_payments for update using (
+    exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+  ) with check (
+    exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
+  );
+
+grant select, insert, update on deal_payments to authenticated;
+
+-- Trigger: set updated_at
+create or replace function deal_payments_set_ts() returns trigger language plpgsql as $$
+begin
+  new.updated_at := now();
+  return new;
+end; $$;
+drop trigger if exists deal_payments_ts_trigger on deal_payments;
+create trigger deal_payments_ts_trigger before update on deal_payments
+  for each row execute function deal_payments_set_ts();
+
+-- Trigger: عند إدخال دفع جديد، إرسال إشعار للطرف الآخر
+create or replace function deal_payments_notify() returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  other_party uuid;
+  link_path text;
+  am_buyer boolean;
+begin
+  if tg_op <> 'INSERT' then return new; end if;
+  select (case when new.submitted_by = d.buyer_id then d.seller_id else d.buyer_id end),
+         (new.submitted_by = d.buyer_id)
+  into other_party, am_buyer
+  from deals d where d.id = new.deal_id;
+
+  link_path := am_buyer ? '/dashboard/deals' : '/my/deals';
+
+  begin
+    perform notify(
+      other_party,
+      'payment_received',
+      'إيصال دفع جديد مرفوع',
+      format('%s رفع إيصال بقيمة %s ر.س على الصفقة #%s',
+        case when am_buyer then 'المشتري' else 'البائع' end,
+        to_char(new.amount_sar, 'FM999G999G999'),
+        new.deal_id),
+      link_path || '?focus=' || new.deal_id::text
+    );
+  exception when others then null;
+  end;
+  return new;
+end; $$;
+
+drop trigger if exists deal_payments_notify_trigger on deal_payments;
+create trigger deal_payments_notify_trigger after insert on deal_payments
+  for each row execute function deal_payments_notify();
+
+
+-- ============================================================
+-- 00000000000048_vouch_endorsements
+-- ============================================================
+
+-- ============================================================
+-- تطوير نظام التوصيات (Vouches) + Endorsements
+-- إضافة أعمدة جديدة للتعليق والعلاقة + عرض آخر الشهادات
+-- ============================================================
+
+alter table vouches add column if not exists comment text check (char_length(coalesce(comment, '')) <= 400);
+alter table vouches add column if not exists relation text
+  check (relation is null or relation in (
+    'customer', 'neighbour', 'family', 'friend', 'repeated_customer', 'service_provider', 'other'
+  ));
+alter table vouches add column if not exists updated_at timestamptz not null default now();
+
+create or replace function vouches_set_updated() returns trigger language plpgsql as $$
+begin
+  new.updated_at := now();
+  return new;
+end; $$;
+drop trigger if exists vouches_updated_trigger on vouches;
+create trigger vouches_updated_trigger before update on vouches
+  for each row execute function vouches_set_updated();
+
+-- سحب آخر N شهادة لصفحة البائع (مع اسم الشخص + صورة إن وجدت)
+create or replace function seller_vouch_feed(p_seller_id uuid, p_limit int default 20)
+returns table (
+  id bigint,
+  created_at timestamptz,
+  comment text,
+  relation text,
+  voucher_id uuid,
+  voucher_full_name text,
+  voucher_avatar text,
+  voucher_trust text,
+  trust_label text
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  select
+    v.id,
+    v.created_at,
+    v.comment,
+    v.relation,
+    v.voucher_id,
+    coalesce(p.full_name, 'جارٍ في الزلفي')::text,
+    coalesce(m.avatar_url, '')::text,
+    coalesce(p.trust_level::text, '0'),
+    case
+      when coalesce(p.trust_level, 0)::int >= 3 then 'موصى به في الحي'
+      when coalesce(p.trust_level, 0)::int >= 2 then 'موثّق'
+      when coalesce(p.trust_level, 0)::int >= 1 then 'حساب جديد موثّق'
+      else 'عضو مجتمع'
+    end::text
+  from vouches v
+  left join profiles p on p.id = v.voucher_id
+  left join profiles_meta m on m.profile_id = v.voucher_id
+  where v.seller_id = p_seller_id
+  order by v.created_at desc
+  limit greatest(1, least(coalesce(p_limit, 20), 50));
+end; $$;
+grant execute on function seller_vouch_feed(uuid, int) to anon, authenticated;
+
+-- دالة: صار الموصّي له صلاحية تعديل تعليقه فقط خلال 30 يومًا
+drop policy if exists "voucher updates own within 30d" on vouches;
+create policy "voucher updates own within 30d"
+  on vouches for update using (
+    voucher_id = auth.uid()
+    and created_at > now() - interval '30 days'
+  ) with check (
+    voucher_id = auth.uid()
+    and created_at > now() - interval '30 days'
+    and seller_id = seller_id
+    and voucher_id = voucher_id
+  );
+grant update on vouches to authenticated;
+
+-- ملخص سريع للبائع (للكروت في البحث)
+create or replace function seller_endorsement_summary(p_seller_id uuid)
+returns table (
+  vouch_count bigint,
+  with_comment_count bigint,
+  latest_vouch_at timestamptz,
+  top_relation text,
+  last_comment text
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  with rel_counts as (
+    select coalesce(relation, 'customer') as r, count(*) as c
+    from vouches
+    where seller_id = p_seller_id
+    group by 1
+    order by 2 desc
+    limit 1
+  )
+  select
+    (select count(*) from vouches where seller_id = p_seller_id)::bigint,
+    (select count(*) from vouches where seller_id = p_seller_id and comment is not null and char_length(comment) > 0)::bigint,
+    (select max(created_at) from vouches where seller_id = p_seller_id),
+    (select r from rel_counts limit 1),
+    (select comment from vouches where seller_id = p_seller_id and comment is not null order by created_at desc limit 1);
+end; $$;
+grant execute on function seller_endorsement_summary(uuid) to anon, authenticated;
+
+
+-- ============================================================
+-- 00000000000049_milestone_badges
+-- ============================================================
+
+-- ============================================================
+-- دوال حساب معايير شارات الإنجاز (Milestone Badges)
+-- ============================================================
+
+create or replace function seller_milestone_metrics(p_seller_id uuid)
+returns table (
+  total_listings_published bigint,
+  avg_images_per_listing numeric,
+  avg_first_reply_minutes_last10 numeric,
+  read_rate_last10 numeric,
+  vouch_count bigint,
+  completed_deals bigint,
+  completed_last30d bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  v_total bigint;
+  v_images_sum bigint;
+  v_avg_img numeric;
+  v_vouch bigint;
+  v_comp bigint;
+  v_last30 bigint;
+  v_reply_avg numeric;
+  v_read_rate numeric;
+begin
+  -- Listings + avg images
+  select count(*), coalesce(sum(image_count), 0)
+    into v_total, v_images_sum
+    from (
+      select l.id,
+        (select count(*) from listing_images li where li.listing_id = l.id) as image_count
+      from listings l
+      where l.seller_id = p_seller_id and l.status = 'published'
+    ) q;
+  if v_total is null then v_total := 0; end if;
+  v_avg_img := case when v_total = 0 then 0 else round((v_images_sum::numeric / v_total::numeric) * 10) / 10 end;
+
+  -- Vouch count
+  select coalesce(count(*), 0) into v_vouch from vouches where seller_id = p_seller_id;
+
+  -- Deals
+  select coalesce(count(*), 0) into v_comp
+    from deals
+    where deals.seller_id = p_seller_id and status = 'completed';
+  select coalesce(count(*), 0) into v_last30
+    from deals
+    where deals.seller_id = p_seller_id
+      and status = 'completed'
+      and completed_at > now() - interval '30 days';
+
+  -- Chat metrics (average first reply minutes + read rate for last 10 threads with the seller as one side)
+  select coalesce(avg(first_reply_minutes), 0)::numeric,
+         coalesce(avg(read_rate), 0)::numeric
+    into v_reply_avg, v_read_rate
+    from (
+      select
+        t.id as thread_id,
+        -- first reply from the OTHER party after the initiator's first message
+        case
+          when (
+            select count(*) from chat_messages m where m.thread_id = t.id
+          ) < 2 then null
+          else extract(epoch from (
+            (select m2.created_at from chat_messages m2 where m2.thread_id = t.id order by m2.created_at limit 1 offset 1)
+            -
+            (select m1.created_at from chat_messages m1 where m1.thread_id = t.id order by m1.created_at limit 1)
+          )) / 60
+        end as first_reply_minutes,
+        -- fraction of unread counter that was read: since we denorm read_at per side, use a simpler heuristic
+        case when t.buyer_id = p_seller_id then
+          least(1, (select case when count(*) = 0 then 1 else (count(*) filter (where m.created_at <= coalesce(t.buyer_last_read_at, 'infinity'::timestamptz)))::numeric / count(*) end from chat_messages m where m.thread_id = t.id))
+        else
+          least(1, (select case when count(*) = 0 then 1 else (count(*) filter (where m.created_at <= coalesce(t.seller_last_read_at, 'infinity'::timestamptz)))::numeric / count(*) end from chat_messages m where m.thread_id = t.id))
+        end as read_rate
+      from chat_threads t
+      where t.buyer_id = p_seller_id or t.seller_id = p_seller_id
+      order by t.last_message_at desc nulls last
+      limit 10
+    ) q;
+
+  return query select
+    v_total, v_avg_img, coalesce(v_reply_avg, 0), coalesce(v_read_rate, 0), v_vouch, v_comp, v_last30;
+end; $$;
+grant execute on function seller_milestone_metrics(uuid) to anon, authenticated;
+
+
+-- ============================================================
+-- 00000000000050_seller_analytics
+-- ============================================================
+
+-- ============================================================
+-- Seller Analytics / KPIs per day (مخططات SVG)
+-- ============================================================
+
+create or replace function seller_analytics_daily(p_seller_id uuid, p_days int default 30)
+returns table (
+  bucket_day date,
+  new_listings bigint,
+  new_views bigint,
+  whatsapp_clicks bigint,
+  new_offers_received bigint,
+  new_offers_sent bigint,
+  new_chats bigint,
+  chat_messages_received bigint,
+  new_deals bigint,
+  deals_completed bigint,
+  revenue_sar numeric
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  start_date date;
+begin
+  start_date := (now() - format('%s days', greatest(1, least(p_days, 90)))::interval)::date;
+
+  return query
+  with days as (
+    select generate_series(start_date, (now())::date, '1 day'::interval)::date as d
+  )
+  select
+    days.d::date as bucket_day,
+    coalesce((select count(*) from listings l
+      where l.seller_id = p_seller_id and l.status = 'published' and l.created_at::date = days.d), 0)::bigint,
+    coalesce((select count(*) from listing_views lv
+      where lv.seller_id = p_seller_id and lv.viewed_at::date = days.d), 0)::bigint,
+    coalesce((select count(*) from listing_whatsapp_clicks wc
+      where wc.seller_id = p_seller_id and wc.clicked_at::date = days.d), 0)::bigint,
+    coalesce((select count(*) from listing_offers lo
+      where lo.seller_id = p_seller_id and lo.created_at::date = days.d), 0)::bigint,
+    coalesce((select count(*) from listing_offers lo
+      where lo.offerer_id = p_seller_id and lo.created_at::date = days.d), 0)::bigint,
+    coalesce((select count(*) from chat_threads t
+      where (t.buyer_id = p_seller_id or t.seller_id = p_seller_id) and t.created_at::date = days.d), 0)::bigint,
+    coalesce((select count(*) from chat_messages m
+      join chat_threads t on m.thread_id = t.id
+      where m.sender_id <> p_seller_id
+        and (t.buyer_id = p_seller_id or t.seller_id = p_seller_id)
+        and m.created_at::date = days.d), 0)::bigint,
+    coalesce((select count(*) from deals d
+      where d.seller_id = p_seller_id and d.created_at::date = days.d), 0)::bigint,
+    coalesce((select count(*) from deals d
+      where d.seller_id = p_seller_id and d.completed_at::date = days.d), 0)::bigint,
+    coalesce((select coalesce(sum(d.price_agreed_sar), 0) from deals d
+      where d.seller_id = p_seller_id and d.status = 'completed' and d.completed_at::date = days.d), 0)::numeric;
+  from days
+  order by days.d asc;
+end; $$;
+grant execute on function seller_analytics_daily(uuid, int) to authenticated;
+
+create or replace function seller_analytics_top_listings(p_seller_id uuid, p_limit int default 5)
+returns table (
+  listing_id uuid,
+  title text,
+  slug text,
+  views_last30 bigint,
+  whatsapp_clicks_last30 bigint,
+  offers_last30 bigint,
+  chat_threads_last30 bigint,
+  neighbourhood text
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  with base as (
+    select l.id as listing_id, l.title, l.slug,
+      coalesce((select count(*) from listing_views v where v.listing_id = l.id and v.viewed_at > now() - interval '30 days'), 0)::bigint as v30,
+      coalesce((select count(*) from listing_whatsapp_clicks w where w.listing_id = l.id and w.clicked_at > now() - interval '30 days'), 0)::bigint as w30,
+      coalesce((select count(*) from listing_offers o where o.listing_id = l.id and o.created_at > now() - interval '30 days'), 0)::bigint as o30,
+      coalesce((select count(*) from chat_threads t where t.listing_id = l.id and t.created_at > now() - interval '30 days'), 0)::bigint as c30,
+      l.neighbourhood
+    from listings l
+    where l.seller_id = p_seller_id and l.status = 'published'
+  )
+  select listing_id, title, slug, v30, w30, o30, c30, coalesce(neighbourhood, '—')::text
+  from base
+  order by (v30 + w30 * 3 + o30 * 10 + c30 * 5) desc
+  limit greatest(1, least(coalesce(p_limit, 5), 20));
+end; $$;
+grant execute on function seller_analytics_top_listings(uuid, int) to authenticated;
+
+create or replace function seller_analytics_top_neighbourhoods(p_seller_id uuid)
+returns table (neighbourhood text, total bigint, pct numeric)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+begin
+  return query
+  with agg as (
+    select coalesce(l.neighbourhood, 'غير محدد') as n, count(*) as c
+    from listing_views lv
+    join listings l on lv.listing_id = l.id
+    where lv.seller_id = p_seller_id and lv.viewed_at > now() - interval '30 days'
+      and l.seller_id = p_seller_id
+    group by 1
+    order by 2 desc
+    limit 8
+  )
+  select n, c,
+    round((c::numeric / nullif((select sum(c) from agg), 0) * 100.0), 1)
+  from agg;
+end; $$;
+grant execute on function seller_analytics_top_neighbourhoods(uuid) to authenticated;
+
+create or replace function seller_analytics_funnel(p_seller_id uuid)
+returns table (
+  step_name text,
+  step_value bigint,
+  conversion_rate_from_previous numeric
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  v_views bigint;
+  v_whatsapp bigint;
+  v_offers bigint;
+  v_chats bigint;
+  v_deals bigint;
+  v_completed bigint;
+begin
+  v_views     := (select coalesce(count(*), 0) from listing_views where seller_id = p_seller_id and viewed_at > now() - interval '30 days');
+  v_whatsapp  := (select coalesce(count(*), 0) from listing_whatsapp_clicks where seller_id = p_seller_id and clicked_at > now() - interval '30 days');
+  v_offers    := (select coalesce(count(*), 0) from listing_offers lo where lo.seller_id = p_seller_id and lo.created_at > now() - interval '30 days');
+  v_chats     := (select coalesce(count(*), 0) from chat_threads t where t.seller_id = p_seller_id and t.created_at > now() - interval '30 days');
+  v_deals     := (select coalesce(count(*), 0) from deals d where d.seller_id = p_seller_id and d.created_at > now() - interval '30 days');
+  v_completed := (select coalesce(count(*), 0) from deals d where d.seller_id = p_seller_id and d.completed_at > now() - interval '30 days');
+
+  return query values
+    ('👀 مشاهدات الإعلانات', v_views, 100.0),
+    ('💬 محادثات جديدة', v_chats, round(100.0 * v_chats::numeric / nullif(v_views, 0), 2)),
+    ('💸 عروض مالية وارده', v_offers, round(100.0 * v_offers::numeric / nullif(greatest(v_chats, 1), 0), 2)),
+    ('🤝 صفقات جديدة', v_deals, round(100.0 * v_deals::numeric / nullif(greatest(v_offers, 1), 0), 2)),
+    ('✅ صفقات مكتملة', v_completed, round(100.0 * v_completed::numeric / nullif(greatest(v_deals, 1), 0), 2));
+end; $$;
+grant execute on function seller_analytics_funnel(uuid) to authenticated;
+
+
+-- ============================================================
+-- 00000000000051_bookings
+-- ============================================================
+
+-- ============================================================
+-- نظام الحجوزات (Bookings) للخدمات — دوام البائع الأسبوعي + الحجوزات
+-- ============================================================
+
+create table if not exists seller_availability (
+  id bigserial primary key,
+  seller_id uuid not null references profiles(id) on delete cascade,
+  day_of_week smallint not null check (day_of_week between 0 and 6), -- 0=الأحد، 6=السبت
+  start_minute smallint not null check (start_minute between 0 and 1439), -- 0 = 00:00
+  end_minute smallint not null check (end_minute between 0 and 1439),
+  is_closed boolean not null default false,
+  slot_duration_minutes smallint not null default 60 check (slot_duration_minutes in (15, 30, 45, 60, 90, 120)),
+  buffer_minutes smallint not null default 0 check (buffer_minutes between 0 and 240),
+  max_parallel_bookings smallint not null default 1 check (max_parallel_bookings between 1 and 20),
+  created_at timestamptz not null default now(),
+  unique (seller_id, day_of_week)
+);
+
+create index if not exists sched_seller_idx on seller_availability(seller_id);
+alter table seller_availability enable row level security;
+
+drop policy if exists "seller_av seller read own" on seller_availability;
+create policy "seller_av seller read own"
+  on seller_availability for select using (seller_id = auth.uid());
+drop policy if exists "seller_av public read approved" on seller_availability;
+create policy "seller_av public read approved"
+  on seller_availability for select using (true); -- للعامة يرون الدوام فقط عند الحجز
+drop policy if exists "seller_av seller manage own" on seller_availability;
+create policy "seller_av seller manage own"
+  on seller_availability for all with check (seller_id = auth.uid());
+grant select, insert, update, delete on seller_availability to authenticated;
+
+create table if not exists seller_bookings (
+  id bigserial primary key,
+  seller_id uuid not null references profiles(id) on delete cascade,
+  buyer_id uuid not null references profiles(id) on delete cascade,
+  listing_id uuid references listings(id) on delete set null,
+  deal_id bigint references deals(id) on delete set null,
+  booking_date date not null,
+  start_minute smallint not null,
+  duration_minutes smallint not null check (duration_minutes between 15 and 480),
+  status text not null default 'pending'
+    check (status in ('pending', 'confirmed', 'completed', 'cancelled', 'no_show')),
+  customer_name text,
+  customer_phone text,
+  service_title text,
+  quoted_price_sar numeric(12,2) check (quoted_price_sar is null or quoted_price_sar > 0),
+  notes text check (char_length(coalesce(notes, '')) <= 500),
+  cancel_reason text check (char_length(coalesce(cancel_reason, '')) <= 300),
+  cancelled_by uuid references profiles(id) on delete set null,
+  confirmed_at timestamptz,
+  completed_at timestamptz,
+  cancelled_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  -- لا يسمح بحجزين متداخلين لنفس البائع إذا كان الحالة not cancelled
+  exclude using gist (
+    seller_id with =,
+    booking_date with =,
+    int4range(start_minute, start_minute + duration_minutes, '[)') with &&
+  ) where (status <> 'cancelled')
+);
+
+create index if not exists bookings_seller_date_idx on seller_bookings(seller_id, booking_date);
+create index if not exists bookings_buyer_idx on seller_bookings(buyer_id, booking_date desc);
+create index if not exists bookings_status_date_idx on seller_bookings(status, booking_date);
+
+alter table seller_bookings enable row level security;
+
+drop policy if exists "bookings parties read" on seller_bookings;
+create policy "bookings parties read"
+  on seller_bookings for select using (seller_id = auth.uid() or buyer_id = auth.uid());
+
+drop policy if exists "bookings buyer inserts" on seller_bookings;
+create policy "bookings buyer inserts"
+  on seller_bookings for insert with check (
+    buyer_id = auth.uid()
+    and status = 'pending'
+    and booking_date >= current_date
+    and duration_minutes in (15, 30, 45, 60, 90, 120)
+    and char_length(coalesce(notes, '')) <= 500
+  );
+
+drop policy if exists "bookings buyer cancels pending only" on seller_bookings;
+create policy "bookings buyer cancels pending only"
+  on seller_bookings for update using (buyer_id = auth.uid()) with check (
+    buyer_id = auth.uid()
+    and old.status = 'pending' and new.status = 'cancelled'
+    and seller_id = old.seller_id and buyer_id = old.buyer_id
+    and booking_date = old.booking_date
+  );
+
+drop policy if exists "bookings seller manage" on seller_bookings;
+create policy "bookings seller manage"
+  on seller_bookings for update using (seller_id = auth.uid()) with check (
+    seller_id = auth.uid()
+    and (
+      (old.status = 'pending' and new.status in ('confirmed', 'cancelled')) or
+      (old.status = 'confirmed' and new.status in ('completed', 'cancelled', 'no_show'))
+    )
+    and buyer_id = old.buyer_id and booking_date = old.booking_date
+  );
+
+grant select, insert, update on seller_bookings to authenticated;
+
+create or replace function seller_bookings_set_ts() returns trigger language plpgsql as $$
+begin
+  new.updated_at := now();
+  if new.status = 'confirmed' and old.status <> 'confirmed' then new.confirmed_at := now(); end if;
+  if new.status = 'completed' and old.status <> 'completed' then new.completed_at := now(); end if;
+  if new.status = 'cancelled' and old.status <> 'cancelled' then new.cancelled_at := now(); end if;
+  return new;
+end; $$;
+drop trigger if exists seller_bookings_ts_trigger on seller_bookings;
+create trigger seller_bookings_ts_trigger before update on seller_bookings
+  for each row execute function seller_bookings_set_ts();
+
+-- دالة: توليد فترات فارغة (الأيام الـ N القادمة) لصفحة الحجز
+create or replace function seller_free_slots(
+  p_seller_id uuid,
+  p_start_date date,
+  p_days int default 14
+)
+returns table (
+  slot_date date,
+  start_minute smallint,
+  end_minute smallint,
+  is_available boolean,
+  overlap_count bigint
+)
+language plpgsql stable security definer set search_path = public, pg_temp as $$
+declare
+  v_sched record;
+  day_cursor date;
+  cur_start integer;
+  cur_end integer;
+  slot_dur integer := 60;
+  buff integer := 0;
+  max_parallel integer := 1;
+  v_avail boolean;
+  v_count bigint;
+begin
+  for day_cursor in
+    select p_start_date + generate_series(0, greatest(1, least(p_days, 60)) - 1) loop
+      select * into v_sched
+      from seller_availability s
+      where s.seller_id = p_seller_id
+        and s.day_of_week = extract(isodow from day_cursor)::int % 7;
+
+      if not found or v_sched.is_closed then
+        -- يوم مغلق كامل -> لا نعيد شيئاً
+        continue;
+      end if;
+
+      slot_dur := coalesce(v_sched.slot_duration_minutes, 60);
+      buff := coalesce(v_sched.buffer_minutes, 0);
+      max_parallel := coalesce(v_sched.max_parallel_bookings, 1);
+
+      cur_start := v_sched.start_minute;
+      while cur_start + slot_dur <= v_sched.end_minute loop
+        cur_end := cur_start + slot_dur;
+
+        -- حساب عدد الحجوزات المتداخلة مع هذا الفترة (مع مراعاة buffer أيضاً)
+        select coalesce(count(*), 0) into v_count
+          from seller_bookings b
+         where b.seller_id = p_seller_id
+           and b.status <> 'cancelled'
+           and b.booking_date = day_cursor
+           and int4range(b.start_minute - buff, b.start_minute + b.duration_minutes + buff, '[)')
+               && int4range(cur_start, cur_end, '[)');
+
+        v_avail := (v_count < max_parallel);
+        return query values (day_cursor, cur_start::smallint, cur_end::smallint, v_avail, v_count);
+        cur_start := cur_start + slot_dur;
+      end loop;
+    end loop;
+  return;
+end; $$;
+grant execute on function seller_free_slots(uuid, date, int) to anon, authenticated;
+
+-- Trigger: عند تأكيد الحجز (confirmed) ننشئ صفقة Deal تلقائية إن لم تكن موجودة
+create or replace function booking_confirmed_create_deal() returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  new_deal_id bigint;
+  d_title text;
+begin
+  if tg_op <> 'UPDATE' then return new; end if;
+  if old.status <> 'pending' or new.status <> 'confirmed' then return new; end if;
+  if new.deal_id is not null then return new; end if;
+
+  d_title := format('حجز موعد: %s - %s',
+    new.service_title ?? 'حجز خدمة',
+    to_char(new.booking_date, 'DD/MM/YYYY'));
+
+  insert into deals (seller_id, buyer_id, listing_id, title, description, price_agreed_sar, status, scheduled_at)
+    values (new.seller_id, new.buyer_id, new.listing_id, d_title,
+            format('حجز في %s:%s لمدة %s دقيقة. ملاحظة: %s',
+              lpad(((new.start_minute / 60))::text, 2, '0') || ':' ||
+                lpad(((new.start_minute % 60))::text, 2, '0'),
+              lpad((((new.start_minute + new.duration_minutes) / 60))::text, 2, '0') || ':' ||
+                lpad((((new.start_minute + new.duration_minutes) % 60))::text, 2, '0'),
+              new.duration_minutes,
+              coalesce(new.notes, '—')),
+            new.quoted_price_sar,
+            'accepted',
+            make_timestamptz(
+              extract(year from new.booking_date)::int,
+              extract(month from new.booking_date)::int,
+              extract(day from new.booking_date)::int,
+              (new.start_minute / 60)::int,
+              (new.start_minute % 60)::int,
+              0
+            )
+           )
+    returning id into new_deal_id;
+
+  new.deal_id := new_deal_id;
+  return new;
+end; $$;
+drop trigger if exists booking_confirmed_deal_trigger on seller_bookings;
+create trigger booking_confirmed_deal_trigger before update on seller_bookings
+  for each row execute function booking_confirmed_create_deal();
+
+-- إشعارات طرفي الحجز
+create or replace function bookings_notify() returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  other_id uuid;
+  is_buyer boolean := (tg_op = 'INSERT') or (tg_op = 'UPDATE' and new.cancelled_by = new.buyer_id);
+  title_str text;
+  body_str text;
+  the_link text;
+  dt_str text;
+begin
+  if tg_op = 'INSERT' then
+    -- للبائع: طلب حجز جديد
+    title_str := '📅 طلب حجز جديد';
+    dt_str := to_char(new.booking_date, 'DD/MM/YYYY') || ' الساعة ' || lpad(((new.start_minute / 60))::text, 2, '0') || ':' || lpad(((new.start_minute % 60))::text, 2, '0');
+    body_str := format('%s حجز %s دقيقة في %s', new.service_title ?? 'خدمة', new.duration_minutes, dt_str);
+    the_link := '/dashboard/bookings?focus=' || new.id;
+    other_id := new.seller_id;
+  elsif tg_op = 'UPDATE' and new.status = 'confirmed' and old.status <> 'confirmed' then
+    -- للمشتري: تأكيد الحجز
+    title_str := '✅ تم تأكيد حجزك';
+    dt_str := to_char(new.booking_date, 'DD/MM/YYYY') || ' الساعة ' || lpad(((new.start_minute / 60))::text, 2, '0') || ':' || lpad(((new.start_minute % 60))::text, 2, '0');
+    body_str := format('الحجز بتاريخ %s تم تأكيده من البائع.', dt_str);
+    other_id := new.buyer_id;
+    the_link := '/my/bookings?focus=' || new.id;
+  elsif tg_op = 'UPDATE' and new.status = 'cancelled' and old.status <> 'cancelled' then
+    -- للطرف الآخر (إلغاء الحجز)
+    is_buyer := (coalesce(new.cancelled_by, new.buyer_id) = new.buyer_id);
+    title_str := '⛔ تم إلغاء موعد حجز';
+    body_str := format('الحجز بتاريخ %s أُلغي. %s', to_char(new.booking_date, 'DD/MM/YYYY'), coalesce(new.cancel_reason, ''));
+    other_id := case when is_buyer then new.seller_id else new.buyer_id end;
+    the_link := case when is_buyer then '/dashboard/bookings?focus=' || new.id else '/my/bookings?focus=' || new.id end;
+  else
+    return new;
+  end if;
+  begin
+    perform notify(other_id, 'booking_update', title_str, left(body_str, 200), the_link);
+  exception when others then null; end;
+  return new;
+end; $$;
+
+drop trigger if exists bookings_notify_trigger on seller_bookings;
+create trigger bookings_notify_trigger after insert or update on seller_bookings
+  for each row execute function bookings_notify();
+
+-- تأكد من أن scheduled_at موجود في deals (قد يكون موجوداً أو لا)
+do $$ begin
+  alter table deals add column if not exists scheduled_at timestamptz;
+exception when others then null; end; $$;
+
