@@ -9,6 +9,9 @@ const TABS = [
   { key: "referrals", href: "/admin/referrals", label: "الترشيحات" },
   { key: "sponsorships", href: "/admin/sponsorships", label: "الرعايات" },
   { key: "pulse", href: "/admin/pulse", label: "نبض الزلفي" },
+  { key: "email", href: "/admin/email", label: "البريد" },
+  { key: "polls", href: "/admin/polls", label: "الاستفتاءات" },
+  { key: "moderation", href: "/admin/moderation", label: "التدقيق" },
 ] as const;
 
 export type AdminTab = (typeof TABS)[number]["key"];

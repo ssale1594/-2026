@@ -24,3 +24,34 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Print layout for the seller dashboard: drop the chrome so a printed copy is
+   just the stats. Lives here rather than in a styled-jsx block on the page,
+   because styled-jsx imports `client-only` and that page is a Server Component. */
+@media print {
+  header,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+  main {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+}
+
+/* Extra print rules for the admin pulse report — page breaks and keeping
+   cards whole. Same reason as above for living here. */
+@media print {
+  .print-break {
+    page-break-before: always;
+  }
+  .card {
+    break-inside: avoid;
+  }
+}

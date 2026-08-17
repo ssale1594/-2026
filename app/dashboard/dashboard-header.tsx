@@ -5,10 +5,14 @@ import { createClient } from "@/lib/supabase/server";
 const SELLER_LINKS = [
   { href: "/dashboard/needs", label: "الطلبات" },
   { href: "/dashboard/offers", label: "عروضي" },
+  { href: "/dashboard/bids", label: "🧾 العروض" },
+  { href: "/dashboard/deals", label: "الصفقات" },
+  { href: "/dashboard/analytics", label: "📊 الإحصائيات" },
   { href: "/dashboard/jobs", label: "وظائفي" },
   { href: "/dashboard/transactions", label: "التعاملات" },
   { href: "/dashboard/referrals", label: "ادعُ جارك" },
   { href: "/dashboard/subscription", label: "الاشتراك" },
+  { href: "/dashboard/settings", label: "الإعدادات" },
 ];
 
 // Shared by every /dashboard/* page — was copy-pasted 5 times before this
@@ -21,10 +25,19 @@ export default async function DashboardHeader({
   sellerName,
   backHref,
   backLabel,
+  title,
+  subtitle,
+  breadcrumb,
 }: {
   sellerName?: string;
   backHref?: string;
   backLabel?: string;
+  // The newer dashboard pages (analytics, bids) render a titled banner under
+  // the nav bar instead of a plain back link. Optional, so the older pages
+  // that only pass sellerName are untouched.
+  title?: string;
+  subtitle?: string;
+  breadcrumb?: { label: string; href?: string }[];
 }) {
   // Reads its own unread count rather than taking it as a prop, so every page
   // that renders the header gets the badge without threading the value through.
@@ -75,6 +88,33 @@ export default async function DashboardHeader({
           )}
         </div>
       </div>
+
+      {(title || breadcrumb) && (
+        <div className="mx-auto max-w-5xl px-4 pb-5">
+          {breadcrumb && breadcrumb.length > 0 && (
+            <nav className="text-xs text-black/50 dark:text-white/50 mb-2 flex flex-wrap gap-1">
+              {breadcrumb.map((crumb, i) => (
+                <span key={i}>
+                  {crumb.href ? (
+                    <Link href={crumb.href} className="hover:underline">
+                      {crumb.label}
+                    </Link>
+                  ) : (
+                    <b>{crumb.label}</b>
+                  )}
+                  {i < breadcrumb.length - 1 && <span className="mx-1">/</span>}
+                </span>
+              ))}
+            </nav>
+          )}
+          {title && <h1 className="text-2xl font-extrabold">{title}</h1>}
+          {subtitle && (
+            <p className="text-sm text-black/60 dark:text-white/60 mt-1">
+              {subtitle}
+            </p>
+          )}
+        </div>
+      )}
     </header>
   );
 }
