@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireUser } from "@/lib/auth/permissions";
-import { redirect } from "next/navigation";
 import DealsClient from "@/app/deals/deals-client";
+import DealFeedbackForm from "@/components/deal-feedback-form";
 import Link from "next/link";
 import { siteName } from "@/lib/seo";
 
@@ -10,8 +10,15 @@ export const metadata = {
   description: "عرض كافة الصفقات التي أرسلتها كعميل، حالة كل صفقة، والإجراءات المتاحة.",
 };
 
-export default async function MyDealsPage() {
+export default async function MyDealsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ review?: string }>;
+}) {
   const user = await requireUser();
+  // The "rate your experience" notification links here with ?review=<id>, so
+  // that one deal's form opens expanded instead of collapsed behind a button.
+  const reviewFocus = Number((await searchParams).review) || null;
   const supabase = await createClient();
 
   const { data: deals } = await supabase
@@ -21,8 +28,8 @@ export default async function MyDealsPage() {
         `created_at, accepted_at, completed_at, disputed_at, rejected_at, cancelled_at, ` +
         `rejected_reason, dispute_reason, cancelled_reason, delivery_notes, ` +
         `listing_id, seller_id, ` +
-        `sellers:profiles!deals_seller_id_fkey(business_name, slug, trust_level, verification_status), ` +
-        `buyers:profiles!deals_buyer_id_fkey(id, business_name, display_name), ` +
+        `sellers:sellers!deals_seller_id_fkey(business_name, slug, verification_status), ` +
+        `buyers:profiles!deals_buyer_id_fkey(id, full_name), ` +
         `listings(title, slug, price, categories(name_ar))`
     )
     .eq("buyer_id", user.id)
@@ -48,6 +55,25 @@ export default async function MyDealsPage() {
   const paymentsByDeal: Record<number, any[]> = {};
   for (const pp of payments) {
     (paymentsByDeal[pp.deal_id] = paymentsByDeal[pp.deal_id] ?? []).push(pp);
+  }
+
+  // Completed deals the buyer has not rated yet. Asked for here rather than
+  // inside DealsClient because that component is shared with the seller role,
+  // and only the buyer side of a deal may leave feedback.
+  const completedIds = ((deals as any[]) ?? [])
+    .filter((d) => ["buyer_confirmed", "completed"].includes(d.status))
+    .map((d) => d.id);
+
+  let awaitingReview: any[] = [];
+  if (completedIds.length) {
+    const { data: rated } = await supabase
+      .from("deal_feedback")
+      .select("deal_id")
+      .in("deal_id", completedIds);
+    const ratedSet = new Set(((rated as any[]) ?? []).map((r) => r.deal_id));
+    awaitingReview = ((deals as any[]) ?? []).filter(
+      (d) => completedIds.includes(d.id) && !ratedSet.has(d.id)
+    );
   }
 
   // Redirect seller-only tab
@@ -97,6 +123,39 @@ export default async function MyDealsPage() {
           </div>
         </header>
 
+        {awaitingReview.length > 0 && (
+          <section className="mb-8">
+            <h2 className="text-lg font-bold mb-1">⭐ صفقات تنتظر تقييمك</h2>
+            <p className="text-sm text-black/60 dark:text-white/60 mb-4">
+              تقييمك يظهر على صفحة البائع ويساعد بقية أهل الزلفي يختارون بثقة.
+            </p>
+            <ul className="space-y-3">
+              {awaitingReview.map((d) => (
+                <li
+                  key={d.id}
+                  id={`review-${d.id}`}
+                  className="rounded-xl border border-black/[.08] dark:border-white/[.145] p-4"
+                >
+                  <div className="text-sm font-medium mb-2">
+                    {d.title || `صفقة #${d.id}`}
+                    {d.sellers?.business_name && (
+                      <span className="text-black/60 dark:text-white/60">
+                        {" "}
+                        — {d.sellers.business_name}
+                      </span>
+                    )}
+                  </div>
+                  <DealFeedbackForm
+                    dealId={d.id}
+                    sellerName={d.sellers?.business_name ?? null}
+                    autoOpen={reviewFocus === d.id}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <DealsClient
           role="buyer"
           deals={deals ?? []}
@@ -107,5 +166,3 @@ export default async function MyDealsPage() {
     </div>
   );
 }
-
-const _ = redirect; // silence unused

@@ -9,6 +9,7 @@ const SELLER_LINKS = [
   { href: "/dashboard/deals", label: "الصفقات" },
   { href: "/dashboard/analytics", label: "📊 الإحصائيات" },
   { href: "/dashboard/jobs", label: "وظائفي" },
+  { href: "/dashboard/bookings", label: "الحجوزات" },
   { href: "/dashboard/transactions", label: "التعاملات" },
   { href: "/dashboard/referrals", label: "ادعُ جارك" },
   { href: "/dashboard/subscription", label: "الاشتراك" },

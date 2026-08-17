@@ -7,7 +7,7 @@ create table if not exists chat_threads (
   deal_id bigint references deals(id) on delete set null,
   listing_id uuid references listings(id) on delete set null,
   buyer_id uuid not null references profiles(id) on delete cascade,
-  seller_id uuid not null references profiles(id) on delete cascade,
+  seller_id uuid not null references sellers(id) on delete cascade,
   subject text,
   created_at timestamptz not null default now(),
   last_message_at timestamptz,
@@ -37,16 +37,19 @@ create policy "chat parties see their threads"
 
 drop policy if exists "chat parties update unread & archive flags" on chat_threads;
 create policy "chat parties update unread & archive flags"
-  on chat_threads for update using (auth.uid() = buyer_id or auth.uid() = seller_id) with check (
-    auth.uid() = buyer_id or auth.uid() = seller_id
-    -- لا يسمح بتغيير الحقول الأخرى (sensible fields immutable)
-    and new.buyer_id = old.buyer_id
-    and new.seller_id = old.seller_id
-    and new.deal_id is not distinct from old.deal_id
-    and new.listing_id is not distinct from old.listing_id
-    and new.subject is not distinct from old.subject
-    and new.created_at = old.created_at
-  );
+  on chat_threads for update
+  using (auth.uid() = buyer_id or auth.uid() = seller_id)
+  with check (auth.uid() = buyer_id or auth.uid() = seller_id);
+
+-- الحقول الحسّاسة تُثبَّت بحجب على مستوى العمود لا بـWITH CHECK: التعبير
+-- هناك ما يرى الصف قبل التعديل (old/new صياغة مشغّلات لا سياسات، وكتابتها
+-- خطأ صياغي يُفشل الهجرة). والسحب على مستوى الجدول أولاً إلزامي، وإلا بقي
+-- منح الجدول من الهجرة 15 ساريًا وما نفع حجب العمود.
+revoke update on chat_threads from authenticated;
+grant update (
+  unread_buyer_count, unread_seller_count, archived_by_buyer, archived_by_seller,
+  last_message_at, last_message_body, last_message_sender_id
+) on chat_threads to authenticated;
 
 drop policy if exists "chat parties create threads between them" on chat_threads;
 create policy "chat parties create threads between them"
@@ -58,7 +61,7 @@ create policy "chat parties create threads between them"
     -- لا يوجد deal_id يخص طرف ثالث (مضمون ب fk ولكن نحفظ الصحة)
   );
 
-grant select, insert, update on chat_threads to authenticated;
+grant select, insert on chat_threads to authenticated;
 
 -- جدول الرسائل الفردية
 create table if not exists chat_messages (
@@ -106,18 +109,17 @@ create policy "chat parties mark messages read"
       where t.id = thread_id and (t.buyer_id = auth.uid() or t.seller_id = auth.uid())
     )
   ) with check (
-    -- يُسمح فقط بتبديل أعلام القراءة + المرفقات غير قابلة للتغيير
-    new.id = old.id and
-    new.thread_id = old.thread_id and
-    new.sender_id = old.sender_id and
-    new.body = old.body and
-    new.created_at = old.created_at and
-    new.attachment_path is not distinct from old.attachment_path and
-    new.attachment_meta is not distinct from old.attachment_meta and
-    new.system_event is not distinct from old.system_event
+    exists (
+      select 1 from chat_threads t
+      where t.id = thread_id and (t.buyer_id = auth.uid() or t.seller_id = auth.uid())
+    )
   );
 
-grant select, insert, update on chat_messages to authenticated;
+-- نص الرسالة ومرسِلها ومرفقاتها غير قابلة للتعديل — أعلام القراءة فقط.
+revoke update on chat_messages from authenticated;
+grant update (read_by_buyer, read_by_seller) on chat_messages to authenticated;
+
+grant select, insert on chat_messages to authenticated;
 
 -- ============================================================
 -- Trigger تحديث أعداد غير المقروءة وآخر رسالة في الـ thread
@@ -189,6 +191,16 @@ begin
   end if;
   if p_buyer_id = p_seller_id then raise exception 'لا يمكن الدردشة مع نفسك'; end if;
 
+  -- الطرف البائع لازم يكون بائعًا معتمدًا فعلاً. بدون هذا الشرط يقدر أي
+  -- مستخدم يفتح محادثة مع أي مستخدم آخر بمجرد تمرير معرّفه — رسائل غير
+  -- مطلوبة لأي شخص بالمنصة، لا تواصلاً مع متجر.
+  if not exists (
+    select 1 from sellers s
+     where s.id = p_seller_id and s.verification_status = 'approved'
+  ) then
+    raise exception 'الطرف الآخر ليس بائعًا معتمدًا';
+  end if;
+
   if p_deal_id is not null then
     insert into chat_threads(deal_id, buyer_id, seller_id, subject, last_message_at)
     values (p_deal_id, p_buyer_id, p_seller_id, coalesce(p_subject, 'محادثة صفقة'), coalesce((select created_at from deals where id = p_deal_id), now()))
@@ -215,4 +227,4 @@ begin
   returning id into out_id;
   return out_id;
 end; $$;
-grant execute on function chat_upsert_thread(bigint,bigint,uuid,uuid,text) to authenticated;
+grant execute on function chat_upsert_thread(uuid,bigint,uuid,uuid,text) to authenticated;

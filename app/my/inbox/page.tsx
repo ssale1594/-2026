@@ -33,8 +33,8 @@ export default async function InboxPage({
       .select(
         "id, subject, listing_id, deal_id, buyer_id, seller_id, created_at, " +
           "last_message_at, last_message_body, last_message_sender_id, unread_buyer_count, " +
-          "buyers:profiles!chat_threads_buyer_id_fkey(display_name, business_name, slug), " +
-          "sellers:profiles!chat_threads_seller_id_fkey(display_name, business_name, slug), " +
+          "buyers:profiles!chat_threads_buyer_id_fkey(full_name), " +
+          "sellers:sellers!chat_threads_seller_id_fkey(business_name, slug), " +
           "listings(title, slug), deals(id, status, title)"
       )
       .eq("buyer_id", user.id)
@@ -47,8 +47,8 @@ export default async function InboxPage({
       .select(
         "id, subject, listing_id, deal_id, buyer_id, seller_id, created_at, " +
           "last_message_at, last_message_body, last_message_sender_id, unread_seller_count, " +
-          "buyers:profiles!chat_threads_buyer_id_fkey(display_name, business_name, slug), " +
-          "sellers:profiles!chat_threads_seller_id_fkey(display_name, business_name, slug), " +
+          "buyers:profiles!chat_threads_buyer_id_fkey(full_name), " +
+          "sellers:sellers!chat_threads_seller_id_fkey(business_name, slug), " +
           "listings(title, slug), deals(id, status, title)"
       )
       .eq("seller_id", user.id)
@@ -65,7 +65,7 @@ export default async function InboxPage({
       ...t,
       _role: "buyer" as const,
       _other_name:
-        t.sellers?.business_name || t.sellers?.display_name || "بائع",
+        t.sellers?.business_name || "بائع",
       _other_slug: t.sellers?.slug,
       _unread: t.unread_buyer_count ?? 0,
     });
@@ -75,8 +75,8 @@ export default async function InboxPage({
       ...t,
       _role: "seller" as const,
       _other_name:
-        t.buyers?.business_name || t.buyers?.display_name || "عميل",
-      _other_slug: t.buyers?.slug,
+        t.buyers?.full_name || "عميل",
+      _other_slug: undefined,
       _unread: t.unread_seller_count ?? 0,
     });
   }

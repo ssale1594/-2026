@@ -9,7 +9,7 @@ create table if not exists polls (
   week_start_date date not null,
   week_end_date date not null,
   status text not null default 'active' check (status in ('draft', 'active', 'closed')),
-  winner_seller_id uuid references profiles(id) on delete set null,
+  winner_seller_id uuid references sellers(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -20,7 +20,7 @@ create index if not exists polls_week_idx on polls(week_start_date desc, week_en
 create table if not exists poll_options (
   id bigserial primary key,
   poll_id bigint not null references polls(id) on delete cascade,
-  seller_id uuid not null references profiles(id) on delete cascade,
+  seller_id uuid not null references sellers(id) on delete cascade,
   sort_order int not null default 0,
   created_at timestamptz not null default now(),
   unique(poll_id, seller_id)

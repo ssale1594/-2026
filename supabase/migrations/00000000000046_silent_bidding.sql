@@ -6,7 +6,7 @@ create table if not exists listing_offers (
   id bigserial primary key,
   listing_id uuid not null references listings(id) on delete cascade,
   offerer_id uuid not null references profiles(id) on delete cascade,
-  seller_id uuid not null references profiles(id) on delete cascade,
+  seller_id uuid not null references sellers(id) on delete cascade,
   offer_price_sar numeric(12,2) not null check (offer_price_sar > 0),
   message text,
   status text not null default 'pending'
@@ -59,37 +59,56 @@ create policy "offerer inserts offers"
     )
   );
 
+-- طرفا العرض يعدّلانه؛ التحويلات المسموحة يفرضها المشغّل أدناه لا
+-- السياسة، لأن WITH CHECK ما يرى الصف قبل التعديل (old/new صياغة
+-- مشغّلات لا سياسات، وكتابتها هنا تُفشل الهجرة عند التطبيق).
 drop policy if exists "offerer cancels pending offers" on listing_offers;
-create policy "offerer cancels pending offers"
-  on listing_offers for update using (
-    auth.uid() = offerer_id
-  ) with check (
-    auth.uid() = offerer_id and
-    old.status in ('pending', 'countered') and
-    new.status in ('cancelled')
-    and new.offer_price_sar = old.offer_price_sar
-    and new.listing_id = old.listing_id
-    and new.offerer_id = old.offerer_id
-    and new.seller_id = old.seller_id
-    and new.counter_price_sar is not distinct from old.counter_price_sar
-  );
-
 drop policy if exists "seller responds to offers" on listing_offers;
-create policy "seller responds to offers"
-  on listing_offers for update using (auth.uid() = seller_id) with check (
-    auth.uid() = seller_id and
-    -- immutable keys
-    new.offer_price_sar = old.offer_price_sar and
-    new.listing_id = old.listing_id and
-    new.offerer_id = old.offerer_id and
-    new.seller_id = old.seller_id and
-    (
+drop policy if exists "offer parties update" on listing_offers;
+create policy "offer parties update"
+  on listing_offers for update
+  using (auth.uid() = offerer_id or auth.uid() = seller_id)
+  with check (auth.uid() = offerer_id or auth.uid() = seller_id);
+
+grant select, insert on listing_offers to authenticated;
+
+-- مفاتيح العرض غير قابلة لإعادة الكتابة. السحب على مستوى الجدول أولاً،
+-- وإلا بقي منح الجدول ساريًا وما نفع حجب العمود.
+revoke update on listing_offers from authenticated;
+grant update (
+  status, counter_price_sar, counter_message, counter_valid_until,
+  accepted_at, rejected_at, countered_at, cancelled_at, deal_id, updated_at
+) on listing_offers to authenticated;
+
+create or replace function listing_offers_guard() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if new.status is not distinct from old.status then return new; end if;
+  if v_uid is null or is_admin() then return new; end if;
+
+  if v_uid = old.offerer_id then
+    if not (old.status in ('pending', 'countered') and new.status = 'cancelled') then
+      raise exception 'مقدّم العرض يقدر يلغي عرضه المعلّق فقط';
+    end if;
+  elsif v_uid = old.seller_id then
+    if not (
       (old.status = 'pending' and new.status in ('accepted', 'rejected', 'countered')) or
       (old.status = 'countered' and new.status in ('accepted', 'rejected'))
-    )
-  );
+    ) then
+      raise exception 'تحويل حالة غير مسموح للبائع: % → %', old.status, new.status;
+    end if;
+  else
+    raise exception 'لست طرفًا في هذا العرض';
+  end if;
 
-grant select, insert, update on listing_offers to authenticated;
+  return new;
+end; $$;
+
+drop trigger if exists listing_offers_guard_trigger on listing_offers;
+create trigger listing_offers_guard_trigger before update on listing_offers
+  for each row execute function listing_offers_guard();
 
 -- دالة: عدد العروض الواردة للبائع حسب الحالة
 create or replace function seller_offers_summary(p_seller_id uuid)

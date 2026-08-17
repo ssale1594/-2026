@@ -1,5 +1,6 @@
 import { requireSeller } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { listingImageUrl } from "@/lib/storage";
 import DashboardHeader from "@/app/dashboard/dashboard-header";
 import BidActions from "./bid-actions";
 
@@ -47,7 +48,7 @@ export default async function DashboardBidsPage({
         "id, status, offer_price_sar, counter_price_sar, message, counter_message, " +
           "valid_until, counter_valid_until, created_at, countered_at, deal_id, " +
           "offerer:offerer_id(id, full_name, phone, profiles_meta!inner(avatar_url)), " +
-          "listing:listings(id, title, slug, price, main_image_url)"
+          "listing:listings(id, title, slug, price, listing_images(storage_path, is_primary))"
       )
       .eq("seller_id", seller.id)
       .order("created_at", { ascending: false }),
@@ -129,7 +130,9 @@ export default async function DashboardBidsPage({
                   >
                     <img
                       src={
-                        o.listing?.main_image_url ??
+                        // listings ما فيه main_image_url — الصور في جدول
+                        // listing_images منفصل، والأساسية هي is_primary.
+                        listingThumb(o.listing) ??
                         "data:image/svg+xml;utf8," + encodeURIComponent(
                           `<svg xmlns='http://www.w3.org/2000/svg' width='128' height='128'><rect width='128' height='128' fill='%23eee'/><text x='50%' y='50%' font-size='32' fill='%23999' text-anchor='middle' dy='.3em'>?</text></svg>`
                         )
@@ -203,4 +206,13 @@ export default async function DashboardBidsPage({
       )}
     </div>
   );
+}
+
+function listingThumb(listing: any): string | undefined {
+  const imgs = listing?.listing_images as
+    | { storage_path: string; is_primary?: boolean }[]
+    | undefined;
+  if (!imgs?.length) return undefined;
+  const primary = imgs.find((i) => i.is_primary) ?? imgs[0];
+  return listingImageUrl(primary.storage_path);
 }

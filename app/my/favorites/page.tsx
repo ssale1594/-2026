@@ -29,7 +29,7 @@ export default async function FavoritesPage() {
       .from("listings")
       .select(
         "id, title, slug, status, price, price_negotiable, view_count, contact_click_count, description, created_at, " +
-          "neighborhoods(name_ar), categories(name_ar), profiles(business_name, slug, trust_level, verification_status), " +
+          "neighborhoods(name_ar), categories(name_ar), sellers(business_name, slug, verification_status), " +
           "listing_images(storage_path, is_primary)"
       )
       .in("id", ids);
@@ -156,7 +156,7 @@ function FavCard({
   initialFav?: boolean;
 }) {
   const img = listing.listing_images?.[0]?.storage_path;
-  const seller = listing.profiles;
+  const seller = listing.sellers;
   const neigh = listing.neighborhoods;
   const cat = listing.categories;
   const archived = listing.archived || listing.status !== "published";

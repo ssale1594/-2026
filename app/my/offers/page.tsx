@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { listingImageUrl } from "@/lib/storage";
 import BidActions from "@/app/dashboard/bids/bid-actions";
 import PageHeader from "@/components/page-header";
 import Link from "next/link";
@@ -35,7 +36,7 @@ export default async function MyOffersPage({
     .select(
       "id, status, offer_price_sar, counter_price_sar, message, counter_message, valid_until, counter_valid_until, created_at, deal_id," +
         "seller:seller_id(id, business_name, slug, profiles_meta!inner(avatar_url)), " +
-        "listing:listings(id, title, slug, price, main_image_url)"
+        "listing:listings(id, title, slug, price, listing_images(storage_path, is_primary))"
     )
     .eq("offerer_id", user.id)
     .order("created_at", { ascending: false });
@@ -120,7 +121,9 @@ export default async function MyOffersPage({
                   >
                     <img
                       src={
-                        o.listing?.main_image_url ??
+                        // listings ما فيه main_image_url — الصور في جدول
+                        // listing_images منفصل، والأساسية هي is_primary.
+                        listingThumb(o.listing) ??
                         "data:image/svg+xml;utf8," + encodeURIComponent(
                           `<svg xmlns='http://www.w3.org/2000/svg' width='128' height='128'><rect width='128' height='128' fill='%23eee'/><text x='50%' y='50%' font-size='32' fill='%23999' text-anchor='middle' dy='.3em'>?</text></svg>`
                         )
@@ -202,4 +205,13 @@ export default async function MyOffersPage({
       )}
     </div>
   );
+}
+
+function listingThumb(listing: any): string | undefined {
+  const imgs = listing?.listing_images as
+    | { storage_path: string; is_primary?: boolean }[]
+    | undefined;
+  if (!imgs?.length) return undefined;
+  const primary = imgs.find((i) => i.is_primary) ?? imgs[0];
+  return listingImageUrl(primary.storage_path);
 }

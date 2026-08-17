@@ -42,15 +42,36 @@ export default async function AdminModerationPage() {
       : Promise.resolve({ data: [] } as any),
     sellerIds.length > 0
       ? supabase
-          .from("profiles")
-          .select("id, business_name, full_name, slug, verification_status, trust_level, role")
+          // business_name/slug/verification_status تعيش في sellers لا في
+          // profiles — profiles ما فيه إلا id/role/full_name/phone.
+          .from("sellers")
+          .select("id, business_name, slug, verification_status, profiles(full_name)")
           .in("id", Array.from(new Set(sellerIds)) as any)
       : Promise.resolve({ data: [] } as any),
-    Promise.resolve({ data: [] } as any),
+    // المبلّغ قد لا يكون بائعًا أصلاً، فنجلب اسمه من profiles مستقلاً
+    // عن صفوف البائعين — وإلا ظهر معرّفه الخام بدل اسمه.
+    sellerIds.length > 0
+      ? supabase
+          .from("profiles")
+          .select("id, full_name")
+          .in("id", Array.from(new Set(sellerIds)) as any)
+      : Promise.resolve({ data: [] } as any),
   ]);
 
   const listMap = new Map(((listQ as any).data ?? []).map((l: any) => [l.id, l]));
-  const sellerMap = new Map(((sellersQ as any).data ?? []).map((s: any) => [s.id, s]));
+  const nameMap = new Map(
+    ((reportersQ as any).data ?? []).map((p: any) => [p.id, p.full_name])
+  );
+  const sellerMap = new Map(
+    ((sellersQ as any).data ?? []).map((s: any) => [
+      s.id,
+      { ...s, full_name: s.profiles?.full_name ?? nameMap.get(s.id) ?? null },
+    ])
+  );
+  // من ليس بائعًا يأخذ صفًا اسميًا فقط
+  for (const [id, full_name] of nameMap) {
+    if (!sellerMap.has(id)) sellerMap.set(id, { id, full_name });
+  }
 
   const richReports = (reports as any[]).map((r) => {
     const reporter = sellerMap.get(r.reporter_id);

@@ -167,7 +167,7 @@ export default function DealsClient({
             const otherParty =
               role === "buyer"
                 ? { name: d.sellers?.business_name || "بائع", slug: d.sellers?.slug }
-                : { name: d.buyers?.business_name || d.buyers?.display_name || "عميل", slug: d.buyers?.slug };
+                : { name: d.buyers?.full_name || "عميل", slug: undefined };
             const disabled = pendingId === d.id;
 
             return (

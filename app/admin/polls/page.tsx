@@ -42,23 +42,32 @@ export default async function AdminPollsPage() {
   const sellerIds = Array.from(sellerIdsSet);
   const profsQ = sellerIds.length > 0
     ? await supabase
-        .from("profiles")
-        .select("id, business_name, full_name, slug, trust_level, verification_status, vouch_count, average_rating, active_listings_count")
+        // معلومات البائع تعيش في sellers لا profiles. وtrust_level و
+        // vouch_count و average_rating ليست أعمدة إطلاقًا — تُحسب بدوال.
+        .from("sellers")
+        .select("id, business_name, slug, verification_status, active_listings_count, profiles(full_name)")
         .in("id", sellerIds as any)
     : Promise.resolve({ data: [] } as any);
   const profiles = (await profsQ).data ?? [];
-  const profMap = new Map((profiles as any[]).map((p) => [p.id, p]));
+  // مسطّح: full_name يجي من صف profiles المربوط لا من sellers نفسه.
+  const profMap = new Map(
+    (profiles as any[]).map((p) => [
+      p.id,
+      { ...p, full_name: p.profiles?.full_name ?? null },
+    ])
+  );
 
   // All approved sellers (for adding options / creating new poll)
   const allSellersQ = await supabase
-    .from("profiles")
-    .select("id, business_name, full_name, slug, verification_status, trust_level, role")
+    .from("sellers")
+    .select("id, business_name, slug, verification_status, profiles(full_name)")
     .in("verification_status", ["approved"])
     .order("business_name", { ascending: true })
     .limit(200);
   const allSellers = (allSellersQ.data ?? []).map((s: any) => ({
     ...s,
-    display: s.business_name || s.full_name || s.id,
+    full_name: s.profiles?.full_name ?? null,
+    display: s.business_name || s.profiles?.full_name || s.id,
   }));
 
   const grouped = polls.map((p: any) => {

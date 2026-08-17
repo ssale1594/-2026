@@ -26,7 +26,7 @@ export default async function PollsPage() {
   if (active) {
     const optsQ = await supabase
       .from("poll_options")
-      .select("id, seller_id, sort_order, profiles(id, business_name, full_name, slug, trust_level, profile_image, thumbnail_storage_path, category_name, verified_company_id, free_listing_limit, active_listings_count, verification_status)")
+      .select("id, seller_id, sort_order, sellers(id, business_name, slug, logo_url, verification_status, active_listings_count, profiles(full_name))")
       .eq("poll_id", active.id)
       .order("sort_order", { ascending: true })
       .order("id", { ascending: true });
@@ -34,7 +34,7 @@ export default async function PollsPage() {
       id: o.id,
       seller_id: o.seller_id,
       sort_order: o.sort_order,
-      seller: o.profiles,
+      seller: o.sellers,
     }));
 
     // results even for active poll: show percentages if closed OR always preview
@@ -45,10 +45,24 @@ export default async function PollsPage() {
       new Set([...options.map((o: any) => o.seller_id), ...results.map((r: any) => r.seller_id)])
     );
     const profsQ = await supabase
-      .from("profiles")
-      .select("id, business_name, full_name, slug, trust_level, profile_image, thumbnail_storage_path, category_name, verified_company_id, verification_status, vouch_count, average_rating")
+      // sellers هي مصدر business_name/slug/logo_url؛ profiles ما فيه
+      // إلا full_name. وtrust_level/vouch_count/average_rating دوال لا أعمدة.
+      .from("sellers")
+      .select("id, business_name, slug, logo_url, verification_status, profiles(full_name)")
       .in("id", sellerIds as any);
-    const profMap = new Map((profsQ.data ?? []).map((p: any) => [p.id, p]));
+    // Flattened to the shape PollVoteClient reads: full_name comes from the
+    // joined profiles row, and the avatar from the seller's logo_url — the
+    // project has no profile-image bucket.
+    const profMap = new Map(
+      (profsQ.data ?? []).map((p: any) => [
+        p.id,
+        {
+          ...p,
+          full_name: p.profiles?.full_name ?? null,
+          profile_image: p.logo_url ?? null,
+        },
+      ])
+    );
 
     optionsWithProfiles = options.map((o: any) => ({
       id: o.id,
@@ -71,7 +85,7 @@ export default async function PollsPage() {
 
   const historyWinnerIds = history.map((h: any) => h.winner_seller_id).filter(Boolean);
   const histWinnersQ = historyWinnerIds.length > 0
-    ? await supabase.from("profiles").select("id, business_name, full_name, slug").in("id", historyWinnerIds as any)
+    ? await supabase.from("sellers").select("id, business_name, slug, profiles(full_name)").in("id", historyWinnerIds as any)
     : Promise.resolve({ data: [] } as any);
   const histWinnersMap = new Map<string, any>(((await histWinnersQ).data ?? []).map((p: any) => [p.id, p]));
 
@@ -175,7 +189,7 @@ export default async function PollsPage() {
                                 href={`/seller/${winner.slug ?? winner.id}`}
                                 className="font-bold truncate block hover:underline"
                               >
-                                {winner.business_name || winner.full_name || "بائع"}
+                                {winner.business_name || winner.profiles?.full_name || "بائع"}
                               </Link>
                             </div>
                             <span className="text-xs opacity-60 shrink-0">#{h.id}</span>

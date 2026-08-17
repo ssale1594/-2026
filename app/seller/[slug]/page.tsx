@@ -52,8 +52,19 @@ export default async function SellerPage({
   }
 
   const supabase = await createClient();
-  const [{ data: listings }, { data: ratingRows }, { data: reviews }, { data: pollWins }, dealsQ, subQ, endorsementsQ, metricsQ] =
-    await Promise.all([
+  const [
+    { data: listings },
+    { data: ratingRows },
+    { data: reviews },
+    { data: pollWins },
+    dealsQ,
+    subQ,
+    endorsementsQ,
+    metricsQ,
+    recommendQ,
+    feedbackQ,
+    availabilityQ,
+  ] = await Promise.all([
       supabase
         .from("listings")
         .select("id, title, slug, price, price_negotiable")
@@ -81,7 +92,24 @@ export default async function SellerPage({
       (supabase.rpc as any)("get_seller_subscription", { p_seller_id: seller.id }),
       (supabase.rpc as any)("seller_endorsement_summary", { p_seller_id: seller.id }),
       (supabase.rpc as any)("seller_milestone_metrics", { p_seller_id: seller.id }),
+      (supabase.rpc as any)("seller_recommend_rate", { p_seller_id: seller.id }),
+      (supabase.rpc as any)("seller_recent_feedback", {
+        p_seller_id: seller.id,
+        p_limit: 20,
+      }),
+      supabase
+        .from("seller_availability")
+        .select("id")
+        .eq("seller_id", seller.id)
+        .eq("is_closed", false)
+        .limit(1),
     ]);
+
+  const recommend = (recommendQ?.data as any[])?.[0] ?? null;
+  const dealFeedback = (feedbackQ?.data as any[]) ?? [];
+  // The booking link only appears when the seller actually has open hours —
+  // otherwise it leads to an empty calendar.
+  const acceptsBookings = ((availabilityQ?.data as any[]) ?? []).length > 0;
 
   const rating = (ratingRows as { average: number | null; total: number }[] | null)?.[0];
   const dealStats = (dealsQ?.data as any[])?.[0] ?? {
@@ -238,6 +266,20 @@ export default async function SellerPage({
             {rating && rating.total > 0 && (
               <div className="text-sm text-black/60 dark:text-white/60 mt-1">
                 ★ {rating.average} · {rating.total} تقييم موثّق
+                {recommend?.recommend_pct != null && (
+                  <> · {recommend.recommend_pct}٪ يوصون فيه</>
+                )}
+              </div>
+            )}
+
+            {acceptsBookings && (
+              <div className="mt-3">
+                <Link
+                  href={`/booking/${slug}`}
+                  className="inline-block rounded-lg bg-foreground text-background text-sm font-medium px-4 py-2"
+                >
+                  📅 احجز موعد
+                </Link>
               </div>
             )}
 
@@ -346,6 +388,47 @@ export default async function SellerPage({
               </li>
             ))}
           </ul>
+        )}
+
+        {dealFeedback.length > 0 && (
+          <section className="mt-10">
+            <h2 className="text-lg font-semibold mb-1">
+              تقييمات العملاء بعد الصفقات
+            </h2>
+            <p className="text-xs text-black/50 dark:text-white/50 mb-4">
+              كل تقييم هنا من مشترٍ أتمّ صفقة فعلية مع البائع على المنصة — مرة
+              واحدة لكل صفقة، ولا يمكن تعديله بعد إرساله.
+            </p>
+            <ul className="flex flex-col gap-3">
+              {dealFeedback.map((f: any) => (
+                <li
+                  key={f.id}
+                  className="rounded-lg border border-black/[.08] dark:border-white/[.145] p-4"
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <span>{"★".repeat(f.rating_stars)}</span>
+                    <span
+                      className={
+                        f.would_recommend
+                          ? "text-xs text-emerald-700 dark:text-emerald-300"
+                          : "text-xs text-black/50 dark:text-white/50"
+                      }
+                    >
+                      {f.would_recommend ? "👍 يوصي فيه" : "👎 ما يوصي"}
+                    </span>
+                  </div>
+                  {f.comment && (
+                    <p className="text-sm text-black/70 dark:text-white/70 mt-1">
+                      {f.comment}
+                    </p>
+                  )}
+                  <div className="text-xs text-black/40 dark:text-white/40 mt-2">
+                    {f.reviewer_name} · {relativeTimeAr(f.created_at)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
 
         {reviews && reviews.length > 0 && (

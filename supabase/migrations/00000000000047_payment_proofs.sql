@@ -101,22 +101,16 @@ create policy "deal_payments party insert"
     )
   );
 
+-- مقدّم الإثبات يقدر يلغيه أو يعدّل ملاحظته فقط. المبلغ وطريقة الدفع
+-- والمرجع تُثبَّت بحجب على مستوى العمود لا بـWITH CHECK، لأن التعبير
+-- هنا ما يرى الصف قبل التعديل (old/new صياغة مشغّلات لا سياسات).
 drop policy if exists "deal_payments uploader can cancel or edit notes" on deal_payments;
 create policy "deal_payments uploader can cancel or edit notes"
-  on deal_payments for update using (
-    submitted_by = auth.uid()
-  ) with check (
+  on deal_payments for update
+  using (submitted_by = auth.uid())
+  with check (
     submitted_by = auth.uid()
     and status in ('submitted', 'cancelled')
-    and (
-      (old.status = 'submitted' and new.status in ('submitted', 'cancelled'))
-      or (old.status = 'cancelled' and new.status = 'cancelled')
-    )
-    and old.amount_sar = new.amount_sar
-    and old.payment_method = new.payment_method
-    and old.reference_number is not distinct from new.reference_number
-    and old.deal_id = new.deal_id
-    and old.submitted_by = new.submitted_by
   );
 
 drop policy if exists "deal_payments admin verify" on deal_payments;
@@ -127,7 +121,14 @@ create policy "deal_payments admin verify"
     exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
   );
 
-grant select, insert, update on deal_payments to authenticated;
+grant select, insert on deal_payments to authenticated;
+
+-- السحب على مستوى الجدول أولاً ثم المنح على الأعمدة المسموحة — حجب
+-- عمود مع بقاء منح الجدول لا أثر له في Postgres.
+-- ملاحظة: أعمدة التحقق (verified_at/verified_by/verification_notes) غير
+-- ممنوحة هنا، فالإدارة تكتبها عبر service role لا عبر سياسة الأدمن.
+revoke update on deal_payments from authenticated;
+grant update (status, notes, updated_at) on deal_payments to authenticated;
 
 -- Trigger: set updated_at
 create or replace function deal_payments_set_ts() returns trigger language plpgsql as $$

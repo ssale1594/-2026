@@ -66,7 +66,7 @@ begin
   order by match_score desc, l.view_count desc, l.created_at desc
   limit p_limit;
 end; $$;
-grant execute on function get_related_listings(bigint,int) to anon, authenticated;
+grant execute on function get_related_listings(uuid, int) to anon, authenticated;
 
 -- 2) أحدث الإعلانات المنشورة
 create or replace function home_recent_listings(p_limit int default 12)
@@ -141,7 +141,9 @@ begin
     ('listings_week', (select count(*) from listings where status = 'published' and created_at > now() - interval '7 days')::bigint),
     ('categories_total', (select count(*) from categories where parent_id is null)::bigint),
     ('neighborhoods_total', (select count(*) from neighborhoods)::bigint),
-    ('contacts_week', (select coalesce(sum(contact_count_delta), 0)::bigint from interaction_log where interaction_type = 'contact' and created_at > now() - interval '7 days'))
+    -- interaction_log (الهجرة 16) أعمدته: kind و day — لا interaction_type
+    -- ولا contact_count_delta ولا created_at، وكل صف فيه تفاعل واحد.
+    ('contacts_week', (select count(*) from interaction_log where kind = 'contact' and day > current_date - 7)::bigint)
   ) t(kpi, val);
 end; $$;
 grant execute on function home_overall_stats() to anon, authenticated;
@@ -164,7 +166,7 @@ begin
     c.name_ar,
     c.slug,
     c.parent_id,
-    c.icon_emoji,
+    c.icon,
     (select count(*) from listings l where l.category_id = c.id and l.status = 'published')::bigint as listings_count
   from categories c
   order by listings_count desc, c.name_ar asc

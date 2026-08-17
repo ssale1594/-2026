@@ -16,7 +16,9 @@ type Listing = {
   contact_click_count?: number | null;
   categories?: { name_ar: string } | null;
   neighborhoods?: { name_ar: string; slug?: string } | null;
-  profiles?: { business_name?: string | null; slug?: string | null; trust_level?: number | null; verification_status?: string; tier?: Tier | null } | null;
+  // العلاقة المضمّنة اسمها sellers لا profiles: business_name/slug تعيش
+  // في sellers، وlistings.seller_id يشير إليها.
+  sellers?: { business_name?: string | null; slug?: string | null; verification_status?: string; tier?: Tier | null } | null;
   seller_tier?: Tier | null;
   listing_images?: { storage_path: string; is_primary?: boolean }[] | null;
   created_at?: string | null;
@@ -37,7 +39,7 @@ export default function ListingCard({
   const hasImages = (listing.listing_images?.length ?? 0) > 0;
   const cat = listing.categories;
   const neigh = listing.neighborhoods;
-  const seller = listing.profiles;
+  const seller = listing.sellers;
   const tier = listing.seller_tier ?? seller?.tier ?? null;
 
   return (

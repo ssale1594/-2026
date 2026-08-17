@@ -48,7 +48,7 @@ export default async function Home() {
   ] = await Promise.all([
     supabase
       .from("categories")
-      .select("id, name_ar, slug, parent_id, icon_emoji")
+      .select("id, name_ar, slug, parent_id, icon_emoji:icon")
       .eq("is_active", true)
       .order("sort_order"),
     getNeighborhoods(),
@@ -65,7 +65,7 @@ export default async function Home() {
         .from("listings")
         .select(
           "id, title, slug, status, price, price_negotiable, view_count, contact_click_count, created_at, " +
-            "categories(name_ar), neighborhoods(name_ar, slug), profiles(business_name, slug, trust_level, verification_status), " +
+            "categories(name_ar), neighborhoods(name_ar, slug), sellers(business_name, slug, verification_status), " +
             "listing_images(storage_path, is_primary)"
         )
         .in("id", ids);
@@ -83,7 +83,7 @@ export default async function Home() {
         .from("listings")
         .select(
           "id, title, slug, status, price, price_negotiable, view_count, contact_click_count, created_at, " +
-            "categories(name_ar), neighborhoods(name_ar, slug), profiles(business_name, slug, trust_level, verification_status), " +
+            "categories(name_ar), neighborhoods(name_ar, slug), sellers(business_name, slug, verification_status), " +
             "listing_images(storage_path, is_primary)"
         )
         .in("id", ids);
@@ -101,7 +101,7 @@ export default async function Home() {
         .from("listings")
         .select(
           "id, title, slug, status, price, price_negotiable, view_count, contact_click_count, created_at, " +
-            "categories(name_ar), neighborhoods(name_ar, slug), profiles(business_name, slug, trust_level, verification_status), " +
+            "categories(name_ar), neighborhoods(name_ar, slug), sellers(business_name, slug, verification_status), " +
             "listing_images(storage_path, is_primary)"
         )
         .in("id", ids);
@@ -111,22 +111,31 @@ export default async function Home() {
         .filter(Boolean)
         .map(enhanceRow);
     })(),
-    // user personalization: same neighborhood + favorite categories based on activity
+    // تخصيص للمستخدم: إعلانات من الحي الذي يهتم به.
+    // profiles ما فيه neighborhood_id — المنصة ما تسأل المستخدم عن حيّه
+    // أصلاً. فنستنتجه من الأحياء التي حفظ منها إعلانات في مفضلته، وهي
+    // أصدق إشارة متوفرة فعلاً.
     (async () => {
       const uid = userRow?.user?.id;
       if (!uid) return [];
-      const userQ = await supabase
-        .from("profiles")
-        .select("neighborhood_id")
-        .eq("id", uid)
-        .maybeSingle();
-      const nid = (userQ.data as any)?.neighborhood_id;
+      const favQ = await supabase
+        .from("favorite_listings")
+        .select("listings(neighborhood_id)")
+        .eq("user_id", uid)
+        .limit(50);
+
+      const counts = new Map<number, number>();
+      for (const row of ((favQ.data as any[]) ?? [])) {
+        const id = row?.listings?.neighborhood_id;
+        if (id != null) counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+      const nid = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
       if (!nid) return [];
       const fullQ = await supabase
         .from("listings")
         .select(
           "id, title, slug, status, price, price_negotiable, view_count, contact_click_count, created_at, " +
-            "categories(name_ar), neighborhoods(name_ar, slug), profiles(business_name, slug, trust_level, verification_status), " +
+            "categories(name_ar), neighborhoods(name_ar, slug), sellers(business_name, slug, verification_status), " +
             "listing_images(storage_path, is_primary)"
         )
         .eq("status", "published")
@@ -141,7 +150,7 @@ export default async function Home() {
         .from("daily_offers")
         .select(
           "listing_id, listings!inner(id, title, slug, status, price, price_negotiable, view_count, contact_click_count, created_at, " +
-            "categories(name_ar), neighborhoods(name_ar, slug), profiles(business_name, slug, trust_level, verification_status), " +
+            "categories(name_ar), neighborhoods(name_ar, slug), sellers(business_name, slug, verification_status), " +
             "listing_images(storage_path, is_primary))"
         )
         .gte("expires_at", new Date().toISOString())

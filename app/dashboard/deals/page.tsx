@@ -20,8 +20,8 @@ export default async function DashboardDealsPage() {
         `created_at, accepted_at, completed_at, disputed_at, rejected_at, cancelled_at, ` +
         `rejected_reason, dispute_reason, cancelled_reason, delivery_notes, ` +
         `listing_id, ` +
-        `sellers:profiles!deals_seller_id_fkey(business_name, slug), ` +
-        `buyers:profiles!deals_buyer_id_fkey(id, business_name, display_name, email, phone), ` +
+        `sellers:sellers!deals_seller_id_fkey(business_name, slug, verification_status), ` +
+        `buyers:profiles!deals_buyer_id_fkey(id, full_name, phone), ` +
         `listings(title, slug, price, categories(name_ar))`
     )
     .eq("seller_id", seller.id)

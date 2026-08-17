@@ -1,15 +1,16 @@
 -- ============================================================================
 -- الهجرات المعلّقة — الصقها كاملة مرة واحدة بـSQL Editor بلوحة Supabase
 -- ============================================================================
--- مولّد آليًا بدمج supabase/migrations/ من 17 إلى 51 بالترتيب.
+-- مولّد آليًا بدمج supabase/migrations/ من 17 إلى 53 بالترتيب.
 --
 -- الترتيب إلزامي — فيه اعتماديات حقيقية:
---   21 (need_requests) قبل 22 و32، لأنهما يقرآن منه
+--   21 (need_requests) قبل 22 و16، لأنهما يقرآن منه
 --   23 (transactions) و25 (vouches) قبل 27، لأن مستوى الثقة يحسب منهما
 --   24 و25 و26 قبل 28، لأن الإشعارات تركّب triggers عليها
---   28 (notify) قبل 30 و31 و33، لأنها كلها تستدعي notify()
---   42 (deals) قبل 47 (إثباتات الدفع) و51 (الحجوزات تنشئ صفقة عند التأكيد)
+--   28 (notify) قبل 30 و31 و33 و51 و52، لأنها كلها تستدعي notify()
+--   42 (deals) قبل 46 و47 و51 و52
 --   43 (الطبقات) قبل 50 (التحليلات تقرأ الطبقة)
+--   53 الأخيرة دائمًا: تعيد ضبط صلاحيات الأعمدة على الوضع النهائي
 --
 -- ملاحظة: رقم 44 غير موجود — فجوة بالترقيم فقط، ما فيه ملف ناقص.
 --
@@ -2794,7 +2795,7 @@ create table if not exists polls (
   week_start_date date not null,
   week_end_date date not null,
   status text not null default 'active' check (status in ('draft', 'active', 'closed')),
-  winner_seller_id uuid references profiles(id) on delete set null,
+  winner_seller_id uuid references sellers(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -2805,7 +2806,7 @@ create index if not exists polls_week_idx on polls(week_start_date desc, week_en
 create table if not exists poll_options (
   id bigserial primary key,
   poll_id bigint not null references polls(id) on delete cascade,
-  seller_id uuid not null references profiles(id) on delete cascade,
+  seller_id uuid not null references sellers(id) on delete cascade,
   sort_order int not null default 0,
   created_at timestamptz not null default now(),
   unique(poll_id, seller_id)
@@ -3184,7 +3185,7 @@ begin
   order by match_score desc, l.view_count desc, l.created_at desc
   limit p_limit;
 end; $$;
-grant execute on function get_related_listings(bigint,int) to anon, authenticated;
+grant execute on function get_related_listings(uuid, int) to anon, authenticated;
 
 -- 2) أحدث الإعلانات المنشورة
 create or replace function home_recent_listings(p_limit int default 12)
@@ -3259,7 +3260,9 @@ begin
     ('listings_week', (select count(*) from listings where status = 'published' and created_at > now() - interval '7 days')::bigint),
     ('categories_total', (select count(*) from categories where parent_id is null)::bigint),
     ('neighborhoods_total', (select count(*) from neighborhoods)::bigint),
-    ('contacts_week', (select coalesce(sum(contact_count_delta), 0)::bigint from interaction_log where interaction_type = 'contact' and created_at > now() - interval '7 days'))
+    -- interaction_log (الهجرة 16) أعمدته: kind و day — لا interaction_type
+    -- ولا contact_count_delta ولا created_at، وكل صف فيه تفاعل واحد.
+    ('contacts_week', (select count(*) from interaction_log where kind = 'contact' and day > current_date - 7)::bigint)
   ) t(kpi, val);
 end; $$;
 grant execute on function home_overall_stats() to anon, authenticated;
@@ -3282,7 +3285,7 @@ begin
     c.name_ar,
     c.slug,
     c.parent_id,
-    c.icon_emoji,
+    c.icon,
     (select count(*) from listings l where l.category_id = c.id and l.status = 'published')::bigint as listings_count
   from categories c
   order by listings_count desc, c.name_ar asc
@@ -3302,7 +3305,7 @@ grant execute on function home_top_categories(int) to anon, authenticated;
 create table if not exists deals (
   id bigserial primary key,
   listing_id uuid references listings(id) on delete set null,
-  seller_id uuid not null references profiles(id) on delete cascade,
+  seller_id uuid not null references sellers(id) on delete cascade,
   buyer_id uuid not null references profiles(id) on delete cascade,
   title text,
   description text,
@@ -3354,28 +3357,67 @@ create policy "buyer creates deal"
     )
   );
 
+-- سياسة واحدة تسمح لطرفي الصفقة بالتحديث. تحويلات الحالة المسموحة يفرضها
+-- المشغّل أدناه لا السياسة: تعبير WITH CHECK ما يرى الصف قبل التعديل —
+-- old/new صياغة مشغّلات لا سياسات، وكتابتها هنا خطأ صياغي يُفشل الهجرة.
 drop policy if exists "seller updates deal status" on deals;
-create policy "seller updates deal status"
-  on deals for update using (auth.uid() = seller_id) with check (
-    auth.uid() = seller_id and
-    (
-      -- seller allowed transitions: pending → accepted | rejected ; accepted → completed
+drop policy if exists "buyer updates deal status (confirm/cancel)" on deals;
+drop policy if exists "deal parties update" on deals;
+create policy "deal parties update"
+  on deals for update
+  using (auth.uid() = seller_id or auth.uid() = buyer_id)
+  with check (auth.uid() = seller_id or auth.uid() = buyer_id);
+
+-- الأعمدة التي لا يجوز إعادة كتابتها بعد الإنشاء — حجب على مستوى العمود،
+-- لأن WITH CHECK لا يقدر يثبّت عمودًا على قيمته السابقة. السحب على مستوى
+-- الجدول أولاً إلزامي: حجب عمود مع بقاء منح الجدول لا أثر له في Postgres.
+revoke update on deals from authenticated;
+grant update (
+  title, description, status, rejected_reason, dispute_reason, cancelled_by,
+  cancelled_reason, delivery_notes, deadline_date, updated_at
+) on deals to authenticated;
+-- scheduled_at يُضاف في الهجرة 51 ويُمنَح ضمنها؛ ذكره هنا يفشل لأنه
+-- ما زال غير موجود عند هذه النقطة.
+
+-- ============================================================
+-- تحويلات حالة الصفقة المسموحة
+-- ============================================================
+create or replace function deals_status_guard() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if new.status is not distinct from old.status then return new; end if;
+
+  -- المشغّلات والإدارة تمرّ بلا قيد (auth.uid() فارغ في سياق الخدمة)
+  if v_uid is null or is_admin() then return new; end if;
+
+  if v_uid = old.seller_id then
+    if not (
       (old.status = 'pending' and new.status in ('accepted', 'rejected')) or
       (old.status = 'accepted' and new.status = 'completed') or
       (old.status = 'buyer_confirmed' and new.status in ('completed', 'disputed'))
-    )
-  );
-
-drop policy if exists "buyer updates deal status (confirm/cancel)" on deals;
-create policy "buyer updates deal status (confirm/cancel)"
-  on deals for update using (auth.uid() = buyer_id) with check (
-    auth.uid() = buyer_id and
-    (
+    ) then
+      raise exception 'تحويل حالة غير مسموح للبائع: % → %', old.status, new.status;
+    end if;
+  elsif v_uid = old.buyer_id then
+    if not (
       (old.status in ('pending', 'accepted') and new.status = 'cancelled') or
       (old.status = 'accepted' and new.status in ('buyer_confirmed', 'disputed')) or
       (old.status = 'buyer_confirmed' and new.status = 'disputed')
-    )
-  );
+    ) then
+      raise exception 'تحويل حالة غير مسموح للمشتري: % → %', old.status, new.status;
+    end if;
+  else
+    raise exception 'لست طرفًا في هذه الصفقة';
+  end if;
+
+  return new;
+end; $$;
+
+drop trigger if exists deals_status_guard_trigger on deals;
+create trigger deals_status_guard_trigger before update on deals
+  for each row execute function deals_status_guard();
 
 -- دالة: عدد صفقات البائع الناجحة المكتملة (للشارة)
 create or replace function seller_completed_deals(p_seller_id uuid)
@@ -3460,19 +3502,20 @@ drop policy if exists "seller sees own subscription" on seller_subscriptions;
 create policy "seller sees own subscription"
   on seller_subscriptions for select using (auth.uid() = seller_id);
 
+-- البائع يعدّل صف اشتراكه، لكن الطبقة والحدود والمبلغ المدفوع تُثبَّت
+-- بحجب على مستوى العمود لا بـWITH CHECK: التعبير هنا ما يرى الصف قبل
+-- التعديل (old/new صياغة مشغّلات لا سياسات، وكتابتها تُفشل الهجرة).
 drop policy if exists "seller self-updates only permitted fields" on seller_subscriptions;
 create policy "seller self-updates only permitted fields"
-  on seller_subscriptions for update using (auth.uid() = seller_id) with check (
-    auth.uid() = seller_id and
-    new.tier = old.tier and
-    new.active_listing_limit = old.active_listing_limit and
-    new.can_featured_ad = old.can_featured_ad and
-    new.featured_quota_monthly = old.featured_quota_monthly and
-    new.premium_badge_level = old.premium_badge_level and
-    new.amount_paid_sar = old.amount_paid_sar and
-    new.status = old.status
-    -- فقط auto_renew و cancellation_reason يُسمح بالتعديل من البائع
-  );
+  on seller_subscriptions for update
+  using (auth.uid() = seller_id)
+  with check (auth.uid() = seller_id);
+
+-- السحب على مستوى الجدول أولاً ثم المنح على الأعمدة المسموحة — العكس
+-- (حجب عمود مع بقاء منح الجدول) لا أثر له في Postgres.
+revoke update on seller_subscriptions from authenticated;
+grant update (auto_renew, cancellation_reason, updated_at)
+  on seller_subscriptions to authenticated;
 
 -- جدول إعلانات "مميزة"
 create table if not exists featured_listings (
@@ -3588,7 +3631,7 @@ create table if not exists chat_threads (
   deal_id bigint references deals(id) on delete set null,
   listing_id uuid references listings(id) on delete set null,
   buyer_id uuid not null references profiles(id) on delete cascade,
-  seller_id uuid not null references profiles(id) on delete cascade,
+  seller_id uuid not null references sellers(id) on delete cascade,
   subject text,
   created_at timestamptz not null default now(),
   last_message_at timestamptz,
@@ -3618,16 +3661,19 @@ create policy "chat parties see their threads"
 
 drop policy if exists "chat parties update unread & archive flags" on chat_threads;
 create policy "chat parties update unread & archive flags"
-  on chat_threads for update using (auth.uid() = buyer_id or auth.uid() = seller_id) with check (
-    auth.uid() = buyer_id or auth.uid() = seller_id
-    -- لا يسمح بتغيير الحقول الأخرى (sensible fields immutable)
-    and new.buyer_id = old.buyer_id
-    and new.seller_id = old.seller_id
-    and new.deal_id is not distinct from old.deal_id
-    and new.listing_id is not distinct from old.listing_id
-    and new.subject is not distinct from old.subject
-    and new.created_at = old.created_at
-  );
+  on chat_threads for update
+  using (auth.uid() = buyer_id or auth.uid() = seller_id)
+  with check (auth.uid() = buyer_id or auth.uid() = seller_id);
+
+-- الحقول الحسّاسة تُثبَّت بحجب على مستوى العمود لا بـWITH CHECK: التعبير
+-- هناك ما يرى الصف قبل التعديل (old/new صياغة مشغّلات لا سياسات، وكتابتها
+-- خطأ صياغي يُفشل الهجرة). والسحب على مستوى الجدول أولاً إلزامي، وإلا بقي
+-- منح الجدول من الهجرة 15 ساريًا وما نفع حجب العمود.
+revoke update on chat_threads from authenticated;
+grant update (
+  unread_buyer_count, unread_seller_count, archived_by_buyer, archived_by_seller,
+  last_message_at, last_message_body, last_message_sender_id
+) on chat_threads to authenticated;
 
 drop policy if exists "chat parties create threads between them" on chat_threads;
 create policy "chat parties create threads between them"
@@ -3639,7 +3685,7 @@ create policy "chat parties create threads between them"
     -- لا يوجد deal_id يخص طرف ثالث (مضمون ب fk ولكن نحفظ الصحة)
   );
 
-grant select, insert, update on chat_threads to authenticated;
+grant select, insert on chat_threads to authenticated;
 
 -- جدول الرسائل الفردية
 create table if not exists chat_messages (
@@ -3687,18 +3733,17 @@ create policy "chat parties mark messages read"
       where t.id = thread_id and (t.buyer_id = auth.uid() or t.seller_id = auth.uid())
     )
   ) with check (
-    -- يُسمح فقط بتبديل أعلام القراءة + المرفقات غير قابلة للتغيير
-    new.id = old.id and
-    new.thread_id = old.thread_id and
-    new.sender_id = old.sender_id and
-    new.body = old.body and
-    new.created_at = old.created_at and
-    new.attachment_path is not distinct from old.attachment_path and
-    new.attachment_meta is not distinct from old.attachment_meta and
-    new.system_event is not distinct from old.system_event
+    exists (
+      select 1 from chat_threads t
+      where t.id = thread_id and (t.buyer_id = auth.uid() or t.seller_id = auth.uid())
+    )
   );
 
-grant select, insert, update on chat_messages to authenticated;
+-- نص الرسالة ومرسِلها ومرفقاتها غير قابلة للتعديل — أعلام القراءة فقط.
+revoke update on chat_messages from authenticated;
+grant update (read_by_buyer, read_by_seller) on chat_messages to authenticated;
+
+grant select, insert on chat_messages to authenticated;
 
 -- ============================================================
 -- Trigger تحديث أعداد غير المقروءة وآخر رسالة في الـ thread
@@ -3770,6 +3815,16 @@ begin
   end if;
   if p_buyer_id = p_seller_id then raise exception 'لا يمكن الدردشة مع نفسك'; end if;
 
+  -- الطرف البائع لازم يكون بائعًا معتمدًا فعلاً. بدون هذا الشرط يقدر أي
+  -- مستخدم يفتح محادثة مع أي مستخدم آخر بمجرد تمرير معرّفه — رسائل غير
+  -- مطلوبة لأي شخص بالمنصة، لا تواصلاً مع متجر.
+  if not exists (
+    select 1 from sellers s
+     where s.id = p_seller_id and s.verification_status = 'approved'
+  ) then
+    raise exception 'الطرف الآخر ليس بائعًا معتمدًا';
+  end if;
+
   if p_deal_id is not null then
     insert into chat_threads(deal_id, buyer_id, seller_id, subject, last_message_at)
     values (p_deal_id, p_buyer_id, p_seller_id, coalesce(p_subject, 'محادثة صفقة'), coalesce((select created_at from deals where id = p_deal_id), now()))
@@ -3796,7 +3851,7 @@ begin
   returning id into out_id;
   return out_id;
 end; $$;
-grant execute on function chat_upsert_thread(bigint,bigint,uuid,uuid,text) to authenticated;
+grant execute on function chat_upsert_thread(uuid,bigint,uuid,uuid,text) to authenticated;
 
 
 -- ============================================================
@@ -3811,7 +3866,7 @@ create table if not exists listing_offers (
   id bigserial primary key,
   listing_id uuid not null references listings(id) on delete cascade,
   offerer_id uuid not null references profiles(id) on delete cascade,
-  seller_id uuid not null references profiles(id) on delete cascade,
+  seller_id uuid not null references sellers(id) on delete cascade,
   offer_price_sar numeric(12,2) not null check (offer_price_sar > 0),
   message text,
   status text not null default 'pending'
@@ -3864,37 +3919,56 @@ create policy "offerer inserts offers"
     )
   );
 
+-- طرفا العرض يعدّلانه؛ التحويلات المسموحة يفرضها المشغّل أدناه لا
+-- السياسة، لأن WITH CHECK ما يرى الصف قبل التعديل (old/new صياغة
+-- مشغّلات لا سياسات، وكتابتها هنا تُفشل الهجرة عند التطبيق).
 drop policy if exists "offerer cancels pending offers" on listing_offers;
-create policy "offerer cancels pending offers"
-  on listing_offers for update using (
-    auth.uid() = offerer_id
-  ) with check (
-    auth.uid() = offerer_id and
-    old.status in ('pending', 'countered') and
-    new.status in ('cancelled')
-    and new.offer_price_sar = old.offer_price_sar
-    and new.listing_id = old.listing_id
-    and new.offerer_id = old.offerer_id
-    and new.seller_id = old.seller_id
-    and new.counter_price_sar is not distinct from old.counter_price_sar
-  );
-
 drop policy if exists "seller responds to offers" on listing_offers;
-create policy "seller responds to offers"
-  on listing_offers for update using (auth.uid() = seller_id) with check (
-    auth.uid() = seller_id and
-    -- immutable keys
-    new.offer_price_sar = old.offer_price_sar and
-    new.listing_id = old.listing_id and
-    new.offerer_id = old.offerer_id and
-    new.seller_id = old.seller_id and
-    (
+drop policy if exists "offer parties update" on listing_offers;
+create policy "offer parties update"
+  on listing_offers for update
+  using (auth.uid() = offerer_id or auth.uid() = seller_id)
+  with check (auth.uid() = offerer_id or auth.uid() = seller_id);
+
+grant select, insert on listing_offers to authenticated;
+
+-- مفاتيح العرض غير قابلة لإعادة الكتابة. السحب على مستوى الجدول أولاً،
+-- وإلا بقي منح الجدول ساريًا وما نفع حجب العمود.
+revoke update on listing_offers from authenticated;
+grant update (
+  status, counter_price_sar, counter_message, counter_valid_until,
+  accepted_at, rejected_at, countered_at, cancelled_at, deal_id, updated_at
+) on listing_offers to authenticated;
+
+create or replace function listing_offers_guard() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if new.status is not distinct from old.status then return new; end if;
+  if v_uid is null or is_admin() then return new; end if;
+
+  if v_uid = old.offerer_id then
+    if not (old.status in ('pending', 'countered') and new.status = 'cancelled') then
+      raise exception 'مقدّم العرض يقدر يلغي عرضه المعلّق فقط';
+    end if;
+  elsif v_uid = old.seller_id then
+    if not (
       (old.status = 'pending' and new.status in ('accepted', 'rejected', 'countered')) or
       (old.status = 'countered' and new.status in ('accepted', 'rejected'))
-    )
-  );
+    ) then
+      raise exception 'تحويل حالة غير مسموح للبائع: % → %', old.status, new.status;
+    end if;
+  else
+    raise exception 'لست طرفًا في هذا العرض';
+  end if;
 
-grant select, insert, update on listing_offers to authenticated;
+  return new;
+end; $$;
+
+drop trigger if exists listing_offers_guard_trigger on listing_offers;
+create trigger listing_offers_guard_trigger before update on listing_offers
+  for each row execute function listing_offers_guard();
 
 -- دالة: عدد العروض الواردة للبائع حسب الحالة
 create or replace function seller_offers_summary(p_seller_id uuid)
@@ -4063,22 +4137,16 @@ create policy "deal_payments party insert"
     )
   );
 
+-- مقدّم الإثبات يقدر يلغيه أو يعدّل ملاحظته فقط. المبلغ وطريقة الدفع
+-- والمرجع تُثبَّت بحجب على مستوى العمود لا بـWITH CHECK، لأن التعبير
+-- هنا ما يرى الصف قبل التعديل (old/new صياغة مشغّلات لا سياسات).
 drop policy if exists "deal_payments uploader can cancel or edit notes" on deal_payments;
 create policy "deal_payments uploader can cancel or edit notes"
-  on deal_payments for update using (
-    submitted_by = auth.uid()
-  ) with check (
+  on deal_payments for update
+  using (submitted_by = auth.uid())
+  with check (
     submitted_by = auth.uid()
     and status in ('submitted', 'cancelled')
-    and (
-      (old.status = 'submitted' and new.status in ('submitted', 'cancelled'))
-      or (old.status = 'cancelled' and new.status = 'cancelled')
-    )
-    and old.amount_sar = new.amount_sar
-    and old.payment_method = new.payment_method
-    and old.reference_number is not distinct from new.reference_number
-    and old.deal_id = new.deal_id
-    and old.submitted_by = new.submitted_by
   );
 
 drop policy if exists "deal_payments admin verify" on deal_payments;
@@ -4089,7 +4157,14 @@ create policy "deal_payments admin verify"
     exists (select 1 from profiles p where p.id = auth.uid() and p.role = 'admin')
   );
 
-grant select, insert, update on deal_payments to authenticated;
+grant select, insert on deal_payments to authenticated;
+
+-- السحب على مستوى الجدول أولاً ثم المنح على الأعمدة المسموحة — حجب
+-- عمود مع بقاء منح الجدول لا أثر له في Postgres.
+-- ملاحظة: أعمدة التحقق (verified_at/verified_by/verification_notes) غير
+-- ممنوحة هنا، فالإدارة تكتبها عبر service role لا عبر سياسة الأدمن.
+revoke update on deal_payments from authenticated;
+grant update (status, notes, updated_at) on deal_payments to authenticated;
 
 -- Trigger: set updated_at
 create or replace function deal_payments_set_ts() returns trigger language plpgsql as $$
@@ -4489,49 +4564,64 @@ grant execute on function seller_analytics_funnel(uuid) to authenticated;
 -- ============================================================
 -- نظام الحجوزات (Bookings) للخدمات — دوام البائع الأسبوعي + الحجوزات
 -- ============================================================
+--
+-- الطرف البائع يشير إلى sellers(id) لا profiles(id): المعرّف نفسه (راجع
+-- الهجرة 01)، لكنه يفرض أن الطرف بائع فعلاً، ويعطي PostgREST مسار ربط
+-- مباشر لجلب business_name/slug — وهي أعمدة غير موجودة على profiles.
+
+-- قيد exclude أدناه يخلط uuid و date (بمعامل =) مع int4range (بمعامل &&)
+-- داخل فهرس GiST واحد. GiST لا يعرف = على uuid/date إلا بهذا الامتداد.
+create extension if not exists btree_gist;
 
 create table if not exists seller_availability (
   id bigserial primary key,
-  seller_id uuid not null references profiles(id) on delete cascade,
+  seller_id uuid not null references sellers(id) on delete cascade,
   day_of_week smallint not null check (day_of_week between 0 and 6), -- 0=الأحد، 6=السبت
   start_minute smallint not null check (start_minute between 0 and 1439), -- 0 = 00:00
-  end_minute smallint not null check (end_minute between 0 and 1439),
+  end_minute smallint not null check (end_minute between 0 and 1440),
   is_closed boolean not null default false,
   slot_duration_minutes smallint not null default 60 check (slot_duration_minutes in (15, 30, 45, 60, 90, 120)),
   buffer_minutes smallint not null default 0 check (buffer_minutes between 0 and 240),
   max_parallel_bookings smallint not null default 1 check (max_parallel_bookings between 1 and 20),
   created_at timestamptz not null default now(),
-  unique (seller_id, day_of_week)
+  unique (seller_id, day_of_week),
+  check (is_closed or end_minute > start_minute)
 );
 
 create index if not exists sched_seller_idx on seller_availability(seller_id);
 alter table seller_availability enable row level security;
 
+-- الدوام الأسبوعي معلومة عامة بطبيعتها — المشتري لازم يشوفها ليحجز.
 drop policy if exists "seller_av seller read own" on seller_availability;
-create policy "seller_av seller read own"
-  on seller_availability for select using (seller_id = auth.uid());
 drop policy if exists "seller_av public read approved" on seller_availability;
-create policy "seller_av public read approved"
-  on seller_availability for select using (true); -- للعامة يرون الدوام فقط عند الحجز
+drop policy if exists "seller_av public read" on seller_availability;
+create policy "seller_av public read" on seller_availability for select using (true);
+
+-- USING مطلوب هنا وليس WITH CHECK وحده: بدونه يعتبره Postgres true، فأي
+-- مستخدم مسجّل يقدر يحذف دوام أي بائع (DELETE لا يفحص إلا USING).
 drop policy if exists "seller_av seller manage own" on seller_availability;
 create policy "seller_av seller manage own"
-  on seller_availability for all with check (seller_id = auth.uid());
-grant select, insert, update, delete on seller_availability to authenticated;
+  on seller_availability for all
+  using (seller_id = auth.uid())
+  with check (seller_id = auth.uid());
+
+grant select on seller_availability to anon, authenticated;
+grant insert, update, delete on seller_availability to authenticated;
 
 create table if not exists seller_bookings (
   id bigserial primary key,
-  seller_id uuid not null references profiles(id) on delete cascade,
+  seller_id uuid not null references sellers(id) on delete cascade,
   buyer_id uuid not null references profiles(id) on delete cascade,
   listing_id uuid references listings(id) on delete set null,
   deal_id bigint references deals(id) on delete set null,
   booking_date date not null,
-  start_minute smallint not null,
+  start_minute smallint not null check (start_minute between 0 and 1439),
   duration_minutes smallint not null check (duration_minutes between 15 and 480),
   status text not null default 'pending'
     check (status in ('pending', 'confirmed', 'completed', 'cancelled', 'no_show')),
-  customer_name text,
-  customer_phone text,
-  service_title text,
+  customer_name text check (char_length(coalesce(customer_name, '')) <= 80),
+  customer_phone text check (char_length(coalesce(customer_phone, '')) <= 30),
+  service_title text check (char_length(coalesce(service_title, '')) <= 120),
   quoted_price_sar numeric(12,2) check (quoted_price_sar is null or quoted_price_sar > 0),
   notes text check (char_length(coalesce(notes, '')) <= 500),
   cancel_reason text check (char_length(coalesce(cancel_reason, '')) <= 300),
@@ -4541,7 +4631,8 @@ create table if not exists seller_bookings (
   cancelled_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  -- لا يسمح بحجزين متداخلين لنفس البائع إذا كان الحالة not cancelled
+  check (seller_id <> buyer_id),
+  -- لا حجزين متداخلين لنفس البائع ما لم يكن أحدهما ملغى
   exclude using gist (
     seller_id with =,
     booking_date with =,
@@ -4563,47 +4654,86 @@ drop policy if exists "bookings buyer inserts" on seller_bookings;
 create policy "bookings buyer inserts"
   on seller_bookings for insert with check (
     buyer_id = auth.uid()
+    and seller_id <> auth.uid()
     and status = 'pending'
+    and deal_id is null
     and booking_date >= current_date
     and duration_minutes in (15, 30, 45, 60, 90, 120)
-    and char_length(coalesce(notes, '')) <= 500
   );
 
+-- طرفا الحجز فقط يقدران يحدّثانه. أي تحويل حالة *مسموح* يفرضه المشغّل
+-- أدناه، لا هذه السياسة: تعبير WITH CHECK ما يقدر يشوف الصف قبل التعديل
+-- (old/new صياغة مشغّلات لا سياسات)، فمحاولة كتابتها هنا خطأ صياغي يفشل
+-- عند تطبيق الهجرة أصلاً.
 drop policy if exists "bookings buyer cancels pending only" on seller_bookings;
-create policy "bookings buyer cancels pending only"
-  on seller_bookings for update using (buyer_id = auth.uid()) with check (
-    buyer_id = auth.uid()
-    and old.status = 'pending' and new.status = 'cancelled'
-    and seller_id = old.seller_id and buyer_id = old.buyer_id
-    and booking_date = old.booking_date
-  );
-
 drop policy if exists "bookings seller manage" on seller_bookings;
-create policy "bookings seller manage"
-  on seller_bookings for update using (seller_id = auth.uid()) with check (
-    seller_id = auth.uid()
-    and (
-      (old.status = 'pending' and new.status in ('confirmed', 'cancelled')) or
-      (old.status = 'confirmed' and new.status in ('completed', 'cancelled', 'no_show'))
-    )
-    and buyer_id = old.buyer_id and booking_date = old.booking_date
-  );
+drop policy if exists "bookings parties update" on seller_bookings;
+create policy "bookings parties update"
+  on seller_bookings for update
+  using (seller_id = auth.uid() or buyer_id = auth.uid())
+  with check (seller_id = auth.uid() or buyer_id = auth.uid());
 
-grant select, insert, update on seller_bookings to authenticated;
+grant select, insert on seller_bookings to authenticated;
 
-create or replace function seller_bookings_set_ts() returns trigger language plpgsql as $$
+-- ولا يقدر أي طرف يعيد كتابة تفاصيل الحجز نفسه بعد إنشائه — حجب على
+-- مستوى العمود، لأن WITH CHECK لا يثبّت عمودًا على قيمته السابقة.
+-- السحب على مستوى الجدول أولاً إلزامي: في Postgres حجب عمود مع بقاء
+-- منح على مستوى الجدول لا أثر له إطلاقًا (الهجرة 15 منحت update على كل
+-- الجداول وجعلته الافتراضي لكل جدول لاحق).
+revoke update on seller_bookings from authenticated;
+grant update (status, cancel_reason, cancelled_by, quoted_price_sar, updated_at)
+  on seller_bookings to authenticated;
+
+-- ============================================================
+-- تحويلات الحالة المسموحة — يفرضها مشغّل لأن السياسة لا ترى الحالة السابقة
+-- ============================================================
+create or replace function seller_bookings_guard() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
+declare
+  v_uid uuid := auth.uid();
+  v_is_seller boolean := (v_uid = old.seller_id);
+  v_is_buyer boolean := (v_uid = old.buyer_id);
 begin
   new.updated_at := now();
+
+  if new.status is distinct from old.status then
+    if v_is_seller then
+      -- البائع: يقبل أو يرفض المعلّق، ويغلق المؤكّد
+      if not (
+        (old.status = 'pending' and new.status in ('confirmed', 'cancelled')) or
+        (old.status = 'confirmed' and new.status in ('completed', 'cancelled', 'no_show'))
+      ) then
+        raise exception 'تحويل حالة غير مسموح للبائع: % → %', old.status, new.status;
+      end if;
+    elsif v_is_buyer then
+      -- المشتري: يلغي حجزه ما دام لم يُؤكَّد بعد، ولا شيء غير ذلك
+      if not (old.status = 'pending' and new.status = 'cancelled') then
+        raise exception 'المشتري يقدر يلغي الحجز المعلّق فقط';
+      end if;
+      new.cancelled_by := old.buyer_id;
+    else
+      raise exception 'لست طرفًا في هذا الحجز';
+    end if;
+  end if;
+
   if new.status = 'confirmed' and old.status <> 'confirmed' then new.confirmed_at := now(); end if;
   if new.status = 'completed' and old.status <> 'completed' then new.completed_at := now(); end if;
-  if new.status = 'cancelled' and old.status <> 'cancelled' then new.cancelled_at := now(); end if;
+  if new.status = 'cancelled' and old.status <> 'cancelled' then
+    new.cancelled_at := now();
+    new.cancelled_by := coalesce(new.cancelled_by, v_uid);
+  end if;
+
   return new;
 end; $$;
-drop trigger if exists seller_bookings_ts_trigger on seller_bookings;
-create trigger seller_bookings_ts_trigger before update on seller_bookings
-  for each row execute function seller_bookings_set_ts();
 
--- دالة: توليد فترات فارغة (الأيام الـ N القادمة) لصفحة الحجز
+drop trigger if exists seller_bookings_ts_trigger on seller_bookings;
+drop trigger if exists seller_bookings_guard_trigger on seller_bookings;
+create trigger seller_bookings_guard_trigger before update on seller_bookings
+  for each row execute function seller_bookings_guard();
+
+-- ============================================================
+-- الفترات المتاحة للأيام القادمة — تغذّي تقويم صفحة الحجز
+-- ============================================================
 create or replace function seller_free_slots(
   p_seller_id uuid,
   p_start_date date,
@@ -4622,130 +4752,157 @@ declare
   day_cursor date;
   cur_start integer;
   cur_end integer;
-  slot_dur integer := 60;
-  buff integer := 0;
-  max_parallel integer := 1;
-  v_avail boolean;
+  slot_dur integer;
+  buff integer;
+  max_parallel integer;
   v_count bigint;
 begin
   for day_cursor in
-    select p_start_date + generate_series(0, greatest(1, least(p_days, 60)) - 1) loop
-      select * into v_sched
+    select p_start_date + generate_series(0, greatest(1, least(p_days, 60)) - 1)
+  loop
+    -- isodow: 1=الاثنين .. 7=الأحد، والقسمة على 7 تحوّلها إلى 0=الأحد
+    select * into v_sched
       from seller_availability s
-      where s.seller_id = p_seller_id
-        and s.day_of_week = extract(isodow from day_cursor)::int % 7;
+     where s.seller_id = p_seller_id
+       and s.day_of_week = (extract(isodow from day_cursor)::int % 7);
 
-      if not found or v_sched.is_closed then
-        -- يوم مغلق كامل -> لا نعيد شيئاً
-        continue;
-      end if;
+    if not found or v_sched.is_closed then
+      continue;
+    end if;
 
-      slot_dur := coalesce(v_sched.slot_duration_minutes, 60);
-      buff := coalesce(v_sched.buffer_minutes, 0);
-      max_parallel := coalesce(v_sched.max_parallel_bookings, 1);
+    slot_dur := coalesce(v_sched.slot_duration_minutes, 60);
+    buff := coalesce(v_sched.buffer_minutes, 0);
+    max_parallel := coalesce(v_sched.max_parallel_bookings, 1);
 
-      cur_start := v_sched.start_minute;
-      while cur_start + slot_dur <= v_sched.end_minute loop
-        cur_end := cur_start + slot_dur;
+    cur_start := v_sched.start_minute;
+    while cur_start + slot_dur <= v_sched.end_minute loop
+      cur_end := cur_start + slot_dur;
 
-        -- حساب عدد الحجوزات المتداخلة مع هذا الفترة (مع مراعاة buffer أيضاً)
-        select coalesce(count(*), 0) into v_count
-          from seller_bookings b
-         where b.seller_id = p_seller_id
-           and b.status <> 'cancelled'
-           and b.booking_date = day_cursor
-           and int4range(b.start_minute - buff, b.start_minute + b.duration_minutes + buff, '[)')
-               && int4range(cur_start, cur_end, '[)');
+      select coalesce(count(*), 0) into v_count
+        from seller_bookings b
+       where b.seller_id = p_seller_id
+         and b.status <> 'cancelled'
+         and b.booking_date = day_cursor
+         and int4range(b.start_minute - buff, b.start_minute + b.duration_minutes + buff, '[)')
+             && int4range(cur_start, cur_end, '[)');
 
-        v_avail := (v_count < max_parallel);
-        return query values (day_cursor, cur_start::smallint, cur_end::smallint, v_avail, v_count);
-        cur_start := cur_start + slot_dur;
-      end loop;
+      -- الفترات الماضية من اليوم الحالي تُعرض مشغولة لا متاحة
+      slot_date := day_cursor;
+      start_minute := cur_start::smallint;
+      end_minute := cur_end::smallint;
+      overlap_count := v_count;
+      is_available := (v_count < max_parallel)
+        and (day_cursor > current_date
+             or cur_start > (extract(hour from now())::int * 60 + extract(minute from now())::int));
+      return next;
+
+      cur_start := cur_start + slot_dur;
     end loop;
+  end loop;
   return;
 end; $$;
 grant execute on function seller_free_slots(uuid, date, int) to anon, authenticated;
 
--- Trigger: عند تأكيد الحجز (confirmed) ننشئ صفقة Deal تلقائية إن لم تكن موجودة
-create or replace function booking_confirmed_create_deal() returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+-- ============================================================
+-- عند التأكيد: تُنشأ صفقة تلقائيًا بالسعر المتفق عليه
+-- ============================================================
+create or replace function booking_confirmed_create_deal() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
 declare
   new_deal_id bigint;
-  d_title text;
+  v_from text;
+  v_to text;
 begin
-  if tg_op <> 'UPDATE' then return new; end if;
   if old.status <> 'pending' or new.status <> 'confirmed' then return new; end if;
   if new.deal_id is not null then return new; end if;
 
-  d_title := format('حجز موعد: %s - %s',
-    new.service_title ?? 'حجز خدمة',
-    to_char(new.booking_date, 'DD/MM/YYYY'));
+  v_from := lpad((new.start_minute / 60)::text, 2, '0') || ':' ||
+            lpad((new.start_minute % 60)::text, 2, '0');
+  v_to := lpad(((new.start_minute + new.duration_minutes) / 60)::text, 2, '0') || ':' ||
+          lpad(((new.start_minute + new.duration_minutes) % 60)::text, 2, '0');
 
-  insert into deals (seller_id, buyer_id, listing_id, title, description, price_agreed_sar, status, scheduled_at)
-    values (new.seller_id, new.buyer_id, new.listing_id, d_title,
-            format('حجز في %s:%s لمدة %s دقيقة. ملاحظة: %s',
-              lpad(((new.start_minute / 60))::text, 2, '0') || ':' ||
-                lpad(((new.start_minute % 60))::text, 2, '0'),
-              lpad((((new.start_minute + new.duration_minutes) / 60))::text, 2, '0') || ':' ||
-                lpad((((new.start_minute + new.duration_minutes) % 60))::text, 2, '0'),
-              new.duration_minutes,
-              coalesce(new.notes, '—')),
-            new.quoted_price_sar,
-            'accepted',
-            make_timestamptz(
-              extract(year from new.booking_date)::int,
-              extract(month from new.booking_date)::int,
-              extract(day from new.booking_date)::int,
-              (new.start_minute / 60)::int,
-              (new.start_minute % 60)::int,
-              0
-            )
-           )
-    returning id into new_deal_id;
+  insert into deals (
+    seller_id, buyer_id, listing_id, title, description,
+    price_agreed_sar, status, scheduled_at
+  )
+  values (
+    new.seller_id, new.buyer_id, new.listing_id,
+    format('حجز موعد: %s - %s',
+           coalesce(new.service_title, 'حجز خدمة'),
+           to_char(new.booking_date, 'DD/MM/YYYY')),
+    format('حجز من %s إلى %s لمدة %s دقيقة. ملاحظة: %s',
+           v_from, v_to, new.duration_minutes, coalesce(new.notes, '—')),
+    new.quoted_price_sar,
+    'accepted',
+    (new.booking_date + make_interval(mins => new.start_minute))::timestamptz
+  )
+  returning id into new_deal_id;
 
   new.deal_id := new_deal_id;
   return new;
 end; $$;
+
 drop trigger if exists booking_confirmed_deal_trigger on seller_bookings;
+-- الاسم يسبق seller_bookings_guard_trigger أبجديًا، فيعمل قبله — وهذا مقصود:
+-- الحارس يرفض التحويل غير المسموح، لكن هذا يقرأ old/new نفسها ولا يعتمد عليه.
 create trigger booking_confirmed_deal_trigger before update on seller_bookings
   for each row execute function booking_confirmed_create_deal();
 
+-- ============================================================
 -- إشعارات طرفي الحجز
-create or replace function bookings_notify() returns trigger language plpgsql security definer set search_path = public, pg_temp as $$
+-- ============================================================
+create or replace function bookings_notify() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
 declare
-  other_id uuid;
-  is_buyer boolean := (tg_op = 'INSERT') or (tg_op = 'UPDATE' and new.cancelled_by = new.buyer_id);
+  target_id uuid;
   title_str text;
   body_str text;
   the_link text;
   dt_str text;
+  cancelled_by_buyer boolean;
 begin
+  dt_str := to_char(new.booking_date, 'DD/MM/YYYY') || ' الساعة ' ||
+            lpad((new.start_minute / 60)::text, 2, '0') || ':' ||
+            lpad((new.start_minute % 60)::text, 2, '0');
+
   if tg_op = 'INSERT' then
-    -- للبائع: طلب حجز جديد
     title_str := '📅 طلب حجز جديد';
-    dt_str := to_char(new.booking_date, 'DD/MM/YYYY') || ' الساعة ' || lpad(((new.start_minute / 60))::text, 2, '0') || ':' || lpad(((new.start_minute % 60))::text, 2, '0');
-    body_str := format('%s حجز %s دقيقة في %s', new.service_title ?? 'خدمة', new.duration_minutes, dt_str);
+    body_str := format('%s حجز %s دقيقة في %s',
+                       coalesce(new.service_title, 'خدمة'), new.duration_minutes, dt_str);
     the_link := '/dashboard/bookings?focus=' || new.id;
-    other_id := new.seller_id;
-  elsif tg_op = 'UPDATE' and new.status = 'confirmed' and old.status <> 'confirmed' then
-    -- للمشتري: تأكيد الحجز
+    target_id := new.seller_id;
+
+  elsif new.status = 'confirmed' and old.status <> 'confirmed' then
     title_str := '✅ تم تأكيد حجزك';
-    dt_str := to_char(new.booking_date, 'DD/MM/YYYY') || ' الساعة ' || lpad(((new.start_minute / 60))::text, 2, '0') || ':' || lpad(((new.start_minute % 60))::text, 2, '0');
     body_str := format('الحجز بتاريخ %s تم تأكيده من البائع.', dt_str);
-    other_id := new.buyer_id;
     the_link := '/my/bookings?focus=' || new.id;
-  elsif tg_op = 'UPDATE' and new.status = 'cancelled' and old.status <> 'cancelled' then
-    -- للطرف الآخر (إلغاء الحجز)
-    is_buyer := (coalesce(new.cancelled_by, new.buyer_id) = new.buyer_id);
+    target_id := new.buyer_id;
+
+  elsif new.status = 'cancelled' and old.status <> 'cancelled' then
+    cancelled_by_buyer := (coalesce(new.cancelled_by, new.buyer_id) = new.buyer_id);
     title_str := '⛔ تم إلغاء موعد حجز';
-    body_str := format('الحجز بتاريخ %s أُلغي. %s', to_char(new.booking_date, 'DD/MM/YYYY'), coalesce(new.cancel_reason, ''));
-    other_id := case when is_buyer then new.seller_id else new.buyer_id end;
-    the_link := case when is_buyer then '/dashboard/bookings?focus=' || new.id else '/my/bookings?focus=' || new.id end;
+    body_str := format('الحجز بتاريخ %s أُلغي. %s', dt_str, coalesce(new.cancel_reason, ''));
+    -- يُبلَّغ الطرف الآخر، لا من ألغى
+    target_id := case when cancelled_by_buyer then new.seller_id else new.buyer_id end;
+    the_link := case when cancelled_by_buyer
+                     then '/dashboard/bookings?focus=' || new.id
+                     else '/my/bookings?focus=' || new.id end;
+
+  elsif new.status = 'completed' and old.status <> 'completed' then
+    title_str := '🎉 اكتمل موعدك';
+    body_str := format('موعد %s اكتمل. قيّم تجربتك مع البائع.', dt_str);
+    the_link := '/my/bookings?focus=' || new.id;
+    target_id := new.buyer_id;
+
   else
     return new;
   end if;
+
+  -- الإشعار تحسين لا شرط: فشله ما يرجّع الحجز نفسه
   begin
-    perform notify(other_id, 'booking_update', title_str, left(body_str, 200), the_link);
+    perform notify(target_id, 'booking_update', title_str, left(body_str, 200), the_link);
   exception when others then null; end;
+
   return new;
 end; $$;
 
@@ -4753,8 +4910,283 @@ drop trigger if exists bookings_notify_trigger on seller_bookings;
 create trigger bookings_notify_trigger after insert or update on seller_bookings
   for each row execute function bookings_notify();
 
--- تأكد من أن scheduled_at موجود في deals (قد يكون موجوداً أو لا)
-do $$ begin
-  alter table deals add column if not exists scheduled_at timestamptz;
-exception when others then null; end; $$;
+-- deals.scheduled_at قد لا يكون موجودًا حسب ترتيب التطبيق
+alter table deals add column if not exists scheduled_at timestamptz;
+grant update (scheduled_at) on deals to authenticated;
+
+
+-- ============================================================
+-- 00000000000052_deal_feedback
+-- ============================================================
+
+-- ============================================================
+-- استبيان رضا العملاء + تقييم نجوم بعد الصفقة
+-- ============================================================
+--
+-- المشروع فيه أصلاً جدول reviews (هجرة 23) مربوط بـtransactions — نظام
+-- المطالبة اليدوي القديم. هذا الجدول مربوط بـdeals (هجرة 42) وهي دورة
+-- حياة مختلفة. عمدًا ما دمجناهما في جدول واحد: مفتاح المصدر مختلف
+-- والقيود مختلفة. لكن `seller_rating` أدناه أُعيدت كتابتها لتجمع
+-- المصدرين، حتى لا ينتهي البائع بتقييمين متنافسين في مكانين.
+
+create table if not exists deal_feedback (
+  id bigserial primary key,
+  deal_id bigint not null unique references deals(id) on delete cascade,
+  reviewer_id uuid not null references profiles(id) on delete cascade, -- المشتري
+  reviewee_id uuid not null references sellers(id) on delete cascade, -- البائع
+  rating_stars smallint not null check (rating_stars between 1 and 5),
+  would_recommend boolean not null default true,
+  comment text check (char_length(coalesce(comment, '')) <= 600),
+  created_at timestamptz not null default now(),
+  check (reviewer_id <> reviewee_id)
+);
+
+create index if not exists deal_feedback_reviewee_idx
+  on deal_feedback(reviewee_id, created_at desc);
+
+alter table deal_feedback enable row level security;
+
+-- التقييمات عامة: كارت البائع في البحث وصفحته يعرضانها.
+drop policy if exists "deal_feedback public read" on deal_feedback;
+create policy "deal_feedback public read" on deal_feedback for select using (true);
+
+-- الشرط الحاسم: لا يقيّم إلا مشتري تلك الصفقة بالذات، وبعد اكتمالها.
+-- القيد `unique (deal_id)` يتكفّل بـ"مرة واحدة فقط" — لا نعتمد على فحص
+-- بالتطبيق يمكن تجاوزه بطلبين متزامنين.
+drop policy if exists "deal_feedback buyer inserts once" on deal_feedback;
+create policy "deal_feedback buyer inserts once"
+  on deal_feedback for insert with check (
+    reviewer_id = auth.uid()
+    and exists (
+      select 1 from deals d
+       where d.id = deal_feedback.deal_id
+         and d.buyer_id = auth.uid()
+         and d.seller_id = deal_feedback.reviewee_id
+         and d.status in ('buyer_confirmed', 'completed')
+    )
+  );
+
+-- لا تعديل ولا حذف بعد الإرسال: تقييم قابل للتحرير بأثر رجعي ليس تقييمًا.
+-- (الإدارة تتصرف عبر is_admin أدناه.)
+drop policy if exists "deal_feedback admin all" on deal_feedback;
+create policy "deal_feedback admin all" on deal_feedback for all using (is_admin());
+
+grant select on deal_feedback to anon, authenticated;
+grant insert on deal_feedback to authenticated;
+
+-- ============================================================
+-- متوسط تقييم البائع — يجمع reviews (23) و deal_feedback (هنا)
+-- ============================================================
+-- آمنة للنشر: لا ترجّع إلا تجميعات على تقييمات عامة أصلاً.
+create or replace function seller_rating(p_seller_id uuid)
+returns table (average numeric, total bigint)
+language sql stable security definer set search_path = public, pg_temp as $$
+  with all_ratings as (
+    select rating::numeric as stars from reviews where seller_id = p_seller_id
+    union all
+    select rating_stars::numeric from deal_feedback where reviewee_id = p_seller_id
+  )
+  select round(avg(stars), 1), count(*) from all_ratings;
+$$;
+grant execute on function seller_rating(uuid) to anon, authenticated;
+
+-- نسبة من يوصون بالبائع — تُعرض بجانب النجوم لأن "٤.٨" وحدها لا تقول
+-- هل يعاود العميل التعامل أم لا.
+create or replace function seller_recommend_rate(p_seller_id uuid)
+returns table (recommend_pct int, sample_size bigint)
+language sql stable security definer set search_path = public, pg_temp as $$
+  select
+    case when count(*) = 0 then null
+         else round(100.0 * count(*) filter (where would_recommend) / count(*))::int
+    end,
+    count(*)
+  from deal_feedback
+  where reviewee_id = p_seller_id;
+$$;
+grant execute on function seller_recommend_rate(uuid) to anon, authenticated;
+
+-- آخر التقييمات لعرضها في صفحة البائع
+create or replace function seller_recent_feedback(p_seller_id uuid, p_limit int default 20)
+returns table (
+  id bigint,
+  rating_stars smallint,
+  would_recommend boolean,
+  comment text,
+  reviewer_name text,
+  created_at timestamptz
+)
+language sql stable security definer set search_path = public, pg_temp as $$
+  select f.id, f.rating_stars, f.would_recommend, f.comment,
+         coalesce(p.full_name, 'عميل'), f.created_at
+    from deal_feedback f
+    left join profiles p on p.id = f.reviewer_id
+   where f.reviewee_id = p_seller_id
+   order by f.created_at desc
+   limit greatest(1, least(coalesce(p_limit, 20), 50));
+$$;
+grant execute on function seller_recent_feedback(uuid, int) to anon, authenticated;
+
+-- هل يحق للمستخدم الحالي تقييم هذه الصفقة؟ نفس شرط سياسة الإدراج،
+-- معروضًا للواجهة حتى لا تظهر نموذجًا سيُرفض.
+create or replace function can_review_deal(p_deal_id bigint)
+returns boolean
+language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (
+    select 1 from deals d
+     where d.id = p_deal_id
+       and d.buyer_id = auth.uid()
+       and d.status in ('buyer_confirmed', 'completed')
+       and not exists (select 1 from deal_feedback f where f.deal_id = d.id)
+  );
+$$;
+grant execute on function can_review_deal(bigint) to authenticated;
+
+-- ============================================================
+-- عند اكتمال الصفقة: ادعُ المشتري للتقييم
+-- ============================================================
+create or replace function deal_completed_ask_feedback() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  if new.status not in ('buyer_confirmed', 'completed') then return new; end if;
+  if old.status in ('buyer_confirmed', 'completed') then return new; end if;
+  if exists (select 1 from deal_feedback f where f.deal_id = new.id) then return new; end if;
+
+  begin
+    perform notify(
+      new.buyer_id,
+      'deal_feedback_request',
+      '⭐ قيّم تجربتك',
+      left(format('كيف كانت تجربتك في «%s»؟ ٣٠ ثانية فقط.',
+                  coalesce(new.title, 'الصفقة')), 200),
+      '/my/deals?review=' || new.id
+    );
+  exception when others then null; end;
+
+  return new;
+end; $$;
+
+drop trigger if exists deal_completed_feedback_trigger on deals;
+create trigger deal_completed_feedback_trigger after update on deals
+  for each row execute function deal_completed_ask_feedback();
+
+-- إشعار البائع بوصول تقييم جديد
+create or replace function deal_feedback_notify_seller() returns trigger
+language plpgsql security definer set search_path = public, pg_temp as $$
+begin
+  begin
+    perform notify(
+      new.reviewee_id,
+      'deal_feedback_received',
+      format('%s وصلك تقييم جديد', repeat('⭐', new.rating_stars)),
+      left(coalesce(nullif(trim(new.comment), ''), 'بدون تعليق'), 200),
+      '/dashboard/deals'
+    );
+  exception when others then null; end;
+  return new;
+end; $$;
+
+drop trigger if exists deal_feedback_notify_trigger on deal_feedback;
+create trigger deal_feedback_notify_trigger after insert on deal_feedback
+  for each row execute function deal_feedback_notify_seller();
+
+-- notify() هي SECURITY DEFINER وتكتب في صندوق مستخدم آخر — تُستدعى من
+-- المشغّلات فقط. (الحجب مطبّق أصلاً في الهجرة 28؛ مكرّر هنا لأن الهجرات
+-- تُطبَّق أحيانًا مفردة.)
+revoke all on function notify(uuid, text, text, text, text) from anon, authenticated;
+
+
+-- ============================================================
+-- 00000000000053_fix_column_revokes
+-- ============================================================
+
+-- ============================================================
+-- إصلاح حجب الأعمدة — كان معطّلاً بالكامل عبر المشروع
+-- ============================================================
+--
+-- المشروع يعتمد على نمط `revoke update (col) on t from authenticated`
+-- في 14 موضعًا (الهجرات 15، 23، 24، 26، 27، 28، 29، 30، 31، 32) لتثبيت
+-- أعمدة لا يجوز للمستخدم إعادة كتابتها — لأن WITH CHECK لا يقدر يثبّت
+-- عمودًا على قيمته السابقة.
+--
+-- لكن هذا النمط لا يعمل. توثيق Postgres صريح:
+--
+--   "if a role has been granted privileges on a table, then revoking the
+--    same privileges from individual columns will have no effect."
+--
+-- والهجرة 15 منحت `grant select, insert, update, delete on all tables`
+-- على مستوى الجدول، وجعلتها الافتراضي لكل جدول لاحق. فكل revoke على
+-- مستوى العمود بعدها أطلق تحذيرًا ومرّ بلا أثر:
+--
+--   البائع يقدر يرفع verification_status لنفسه إلى approved
+--   البائع يقدر يرفع free_listing_limit و referral_bonus_slots لنفسه
+--   البائع يقدر يعلّم إعلانه is_featured بدون دفع
+--   أي مستخدم يقدر يزرع إشعارًا بعنوان ورابط من اختياره في صندوقه
+--   صاحب السؤال يقدر ينشر سؤاله بنفسه متجاوزًا مراجعة الإدارة
+--
+-- الترتيب الصحيح: اسحب الصلاحية على مستوى الجدول أولاً، ثم امنحها على
+-- الأعمدة المسموحة فقط. الكتلة أدناه تفعل ذلك اشتقاقًا من
+-- information_schema، فلا تحتاج تعداد الأعمدة يدويًا ولا تنكسر لو أُضيف
+-- عمود جديد لاحقًا — العمود الجديد يُمنح تلقائيًا ما لم يُدرج بالقائمة.
+
+do $$
+declare
+  -- الجدول -> الأعمدة المحجوبة عن التعديل من authenticated
+  protected jsonb := jsonb_build_object(
+    'listings',      jsonb_build_array('id', 'seller_id', 'is_featured', 'created_at'),
+    'sellers',       jsonb_build_array('id', 'verification_status', 'free_listing_limit',
+                                       'identity_verified', 'referral_code',
+                                       'referral_bonus_slots', 'last_active_at', 'created_at'),
+    'transactions',  jsonb_build_array('id', 'buyer_id', 'seller_id', 'listing_id', 'created_at'),
+    'offers',        jsonb_build_array('id', 'status', 'seller_id', 'created_at'),
+    'questions',     jsonb_build_array('id', 'status', 'author_id', 'answer_count', 'created_at'),
+    'answers',       jsonb_build_array('id', 'status', 'author_id', 'question_id', 'created_at'),
+    'notifications', jsonb_build_array('id', 'user_id', 'type', 'title', 'body', 'link', 'created_at'),
+    'events',        jsonb_build_array('id', 'status', 'created_by', 'created_at'),
+    'jobs',          jsonb_build_array('id', 'seller_id', 'created_at'),
+    'deals',         jsonb_build_array('id', 'listing_id', 'seller_id', 'buyer_id',
+                                       'price_agreed_sar', 'created_at', 'accepted_at',
+                                       'completed_at', 'disputed_at', 'rejected_at', 'cancelled_at'),
+    'seller_bookings', jsonb_build_array('id', 'seller_id', 'buyer_id', 'listing_id', 'deal_id',
+                                         'booking_date', 'start_minute', 'duration_minutes',
+                                         'customer_name', 'customer_phone', 'service_title',
+                                         'notes', 'created_at', 'confirmed_at',
+                                         'completed_at', 'cancelled_at')
+  );
+  tbl text;
+  cols text;
+begin
+  for tbl in select jsonb_object_keys(protected) loop
+    -- الجدول قد لا يكون موجودًا لو طُبّقت الهجرات جزئيًا
+    if to_regclass('public.' || quote_ident(tbl)) is null then
+      continue;
+    end if;
+
+    select string_agg(quote_ident(c.column_name), ', ' order by c.ordinal_position)
+      into cols
+      from information_schema.columns c
+     where c.table_schema = 'public'
+       and c.table_name = tbl
+       and not (protected -> tbl ? c.column_name);
+
+    -- اسحب على مستوى الجدول أولاً، وإلا ما نفع المنح على مستوى العمود
+    execute format('revoke update on public.%I from authenticated', tbl);
+
+    if cols is not null then
+      execute format('grant update (%s) on public.%I to authenticated', cols, tbl);
+    end if;
+  end loop;
+end $$;
+
+-- تحقّق: هذا الاستعلام لازم يرجّع صفرًا بعد التطبيق. لو رجّع صفوفًا،
+-- فأحد الأعمدة الحساسة ما زال قابلاً للتعديل.
+--
+--   select table_name, column_name
+--     from information_schema.column_privileges
+--    where grantee = 'authenticated' and privilege_type = 'UPDATE'
+--      and (table_name, column_name) in (
+--        ('sellers', 'verification_status'), ('sellers', 'free_listing_limit'),
+--        ('sellers', 'referral_bonus_slots'), ('listings', 'is_featured'),
+--        ('notifications', 'title'), ('notifications', 'link'),
+--        ('questions', 'status'), ('deals', 'price_agreed_sar')
+--      );
 

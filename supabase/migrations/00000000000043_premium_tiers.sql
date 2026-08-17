@@ -39,19 +39,20 @@ drop policy if exists "seller sees own subscription" on seller_subscriptions;
 create policy "seller sees own subscription"
   on seller_subscriptions for select using (auth.uid() = seller_id);
 
+-- البائع يعدّل صف اشتراكه، لكن الطبقة والحدود والمبلغ المدفوع تُثبَّت
+-- بحجب على مستوى العمود لا بـWITH CHECK: التعبير هنا ما يرى الصف قبل
+-- التعديل (old/new صياغة مشغّلات لا سياسات، وكتابتها تُفشل الهجرة).
 drop policy if exists "seller self-updates only permitted fields" on seller_subscriptions;
 create policy "seller self-updates only permitted fields"
-  on seller_subscriptions for update using (auth.uid() = seller_id) with check (
-    auth.uid() = seller_id and
-    new.tier = old.tier and
-    new.active_listing_limit = old.active_listing_limit and
-    new.can_featured_ad = old.can_featured_ad and
-    new.featured_quota_monthly = old.featured_quota_monthly and
-    new.premium_badge_level = old.premium_badge_level and
-    new.amount_paid_sar = old.amount_paid_sar and
-    new.status = old.status
-    -- فقط auto_renew و cancellation_reason يُسمح بالتعديل من البائع
-  );
+  on seller_subscriptions for update
+  using (auth.uid() = seller_id)
+  with check (auth.uid() = seller_id);
+
+-- السحب على مستوى الجدول أولاً ثم المنح على الأعمدة المسموحة — العكس
+-- (حجب عمود مع بقاء منح الجدول) لا أثر له في Postgres.
+revoke update on seller_subscriptions from authenticated;
+grant update (auto_renew, cancellation_reason, updated_at)
+  on seller_subscriptions to authenticated;
 
 -- جدول إعلانات "مميزة"
 create table if not exists featured_listings (

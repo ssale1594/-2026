@@ -92,7 +92,7 @@ export default async function ListingPage({
         .from("listings")
         .select(
           "id, title, slug, status, price, price_negotiable, view_count, contact_click_count, created_at, " +
-            "categories(name_ar), neighborhoods(name_ar, slug), profiles(business_name, slug, trust_level, verification_status), " +
+            "categories(name_ar), neighborhoods(name_ar, slug), sellers(business_name, slug, verification_status), " +
             "listing_images(storage_path, is_primary)"
         )
         .in("id", ids);
