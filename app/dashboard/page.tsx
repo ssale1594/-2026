@@ -2,7 +2,6 @@ import Link from "next/link";
 import { requireSeller } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import DashboardHeader from "./dashboard-header";
-import { archiveListing } from "./listings/[id]/edit/actions";
 import ArchiveButton from "./archive-button";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -107,12 +106,7 @@ export default async function DashboardPage() {
                     تعديل
                   </Link>
                   {listing.status !== "archived" && (
-                    <ArchiveButton
-                      onArchive={async () => {
-                        "use server";
-                        await archiveListing(listing.id);
-                      }}
-                    />
+                    <ArchiveButton listingId={listing.id} />
                   )}
                 </div>
               </li>

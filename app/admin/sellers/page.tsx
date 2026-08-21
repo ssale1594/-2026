@@ -42,14 +42,8 @@ export default async function AdminSellersPage() {
                   )}
                 </div>
                 <ReviewButtons
-                  onApprove={async () => {
-                    "use server";
-                    await setSellerVerification(seller.id, "approved");
-                  }}
-                  onReject={async () => {
-                    "use server";
-                    await setSellerVerification(seller.id, "rejected");
-                  }}
+                  onApprove={setSellerVerification.bind(null, seller.id, "approved")}
+                  onReject={setSellerVerification.bind(null, seller.id, "rejected")}
                 />
               </li>
             ))}

@@ -54,14 +54,8 @@ export default async function AdminListingsPage() {
                   )}
                 </div>
                 <ReviewButtons
-                  onApprove={async () => {
-                    "use server";
-                    await setListingStatus(listing.id, "published");
-                  }}
-                  onReject={async () => {
-                    "use server";
-                    await setListingStatus(listing.id, "rejected");
-                  }}
+                  onApprove={setListingStatus.bind(null, listing.id, "published")}
+                  onReject={setListingStatus.bind(null, listing.id, "rejected")}
                 />
               </li>
             ))}
