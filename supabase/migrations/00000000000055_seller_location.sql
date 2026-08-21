@@ -51,7 +51,7 @@ create table if not exists seller_contact_clicks (
   id bigserial primary key,
   seller_id uuid references sellers(id) on delete cascade not null,
   channel text not null default 'whatsapp'
-    check (channel in ('whatsapp', 'phone', 'directions', 'profile')),
+    check (channel in ('whatsapp', 'phone', 'directions', 'profile', 'qr')),
   visitor_hash text,
   clicked_at timestamptz not null default now()
 );
@@ -78,7 +78,7 @@ create or replace function record_seller_contact_click(
   p_visitor_hash text default null
 ) returns void language plpgsql security definer set search_path = public, pg_temp as $$
 begin
-  if p_channel not in ('whatsapp', 'phone', 'directions', 'profile') then
+  if p_channel not in ('whatsapp', 'phone', 'directions', 'profile', 'qr') then
     return;
   end if;
 

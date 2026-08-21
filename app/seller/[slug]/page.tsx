@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import SellerContactButtons from "@/components/seller-contact-buttons";
+import VisitSourceTracker from "@/components/visit-source-tracker";
 import { pageTitle, siteName } from "@/lib/seo";
 import { getSellerBySlug } from "@/lib/data/sellers";
 import { relativeTimeAr } from "@/lib/relative-time";
@@ -42,10 +43,15 @@ export async function generateMetadata({
 
 export default async function SellerPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  // `?src=qr` is set by the printed QR poster (app/dashboard/qr) so the seller
+  // can tell whether the sticker actually brings anyone in.
+  searchParams: Promise<{ src?: string }>;
 }) {
   const { slug } = await params;
+  const { src } = await searchParams;
   const seller = await getSellerBySlug(slug);
 
   if (!seller) {
@@ -187,6 +193,7 @@ export default async function SellerPage({
 
   return (
     <div className="min-h-screen font-sans">
+      <VisitSourceTracker sellerId={seller.id} source={src} />
       <header className="border-b border-black/[.08] dark:border-white/[.145]">
         <div className="mx-auto max-w-5xl px-4 py-5 flex items-center justify-between">
           <Link href="/" className="text-lg font-bold">

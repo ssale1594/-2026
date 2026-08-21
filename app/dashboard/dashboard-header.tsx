@@ -14,6 +14,7 @@ const SELLER_LINKS = [
   { href: "/dashboard/bookings", label: "الحجوزات" },
   { href: "/dashboard/schedule", label: "🗓️ الدوام" },
   { href: "/dashboard/location", label: "📍 موقعي" },
+  { href: "/dashboard/qr", label: "🏷️ ملصق QR" },
   { href: "/dashboard/transactions", label: "التعاملات" },
   { href: "/dashboard/referrals", label: "ادعُ جارك" },
   { href: "/dashboard/subscription", label: "الاشتراك" },
