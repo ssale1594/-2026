@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { pageTitle, siteName } from "@/lib/seo";
 import { listingImageUrl } from "@/lib/storage";
+import NewsletterForm from "./newsletter-form";
 
 export const metadata: Metadata = {
   title: pageTitle("وش الجديد بالزلفي؟"),
@@ -50,6 +51,13 @@ export default async function WhatsNewPage() {
         <p className="text-sm text-black/60 dark:text-white/60 mb-6">
           آخر الإعلانات اللي نُشرت بكل الفئات.
         </p>
+
+        <div className="mb-8 rounded-xl border border-black/[.08] dark:border-white/[.145] p-4">
+          <p className="text-sm font-semibold mb-2">
+            📬 ما تبي تفوّتك؟ اشترك تستلم أهم الإعلانات الجديدة كل أسبوع بإيميلك.
+          </p>
+          <NewsletterForm />
+        </div>
 
         {!listings || listings.length === 0 ? (
           <p className="text-black/60 dark:text-white/60">ما فيه إعلانات منشورة بعد.</p>
