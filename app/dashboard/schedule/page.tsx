@@ -3,7 +3,8 @@ import { requireSeller } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { pageTitle } from "@/lib/seo";
 import DashboardHeader from "@/app/dashboard/dashboard-header";
-import ScheduleForm, { rowsFromDb } from "./schedule-form";
+import ScheduleForm from "./schedule-form";
+import { rowsFromDb } from "@/lib/schedule";
 
 export const metadata = { title: pageTitle("دوام الحجوزات") };
 
