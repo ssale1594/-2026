@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { siteName, siteUrl } from "@/lib/seo";
 import SearchBox from "@/components/search-box";
+import SiteNav from "@/components/site-nav";
 import NeighborhoodSelect from "@/components/neighborhood-select";
 import SponsorBanner from "@/components/sponsor-banner";
 import { getNeighborhoods } from "@/lib/data/neighborhoods";
@@ -185,34 +186,12 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen font-sans">
-      <header className="sticky top-0 z-40 border-b border-black/[.08] dark:border-white/[.145] bg-white/90 dark:bg-black/85 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-black/[.08] dark:border-white/[.145] bg-white/90 dark:bg-black/85 backdrop-blur relative">
         <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between gap-4">
           <Link href="/" className="text-xl font-extrabold shrink-0 inline-flex items-center gap-2">
             🏬 {siteName}
           </Link>
-          <nav className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm text-black/65 dark:text-white/70">
-            <Link href="/search" className="hover:underline">
-              🔎 البحث المتقدم
-            </Link>
-            <Link href="/offers" className="hover:underline">
-              💸 عروض اليوم
-            </Link>
-            <Link href="/needs" className="hover:underline">
-              🙋 احتياجات الجيران
-            </Link>
-            <Link href="/polls" className="hover:underline">
-              🗳️ الاستفتاء الأسبوعي
-            </Link>
-            <Link href="/jobs" className="hover:underline">
-              💼 وظائف
-            </Link>
-            <Link href="/events" className="hover:underline">
-              🎪 فعاليات
-            </Link>
-            <Link href="/my/favorites" className="hover:underline font-semibold text-rose-600">
-              ❤️ المفضلة
-            </Link>
-          </nav>
+          <SiteNav />
         </div>
       </header>
 
