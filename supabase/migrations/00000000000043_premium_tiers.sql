@@ -2,7 +2,10 @@
 -- نظام العضويات المميزة للبائعين (Silver/Gold/Diamond)
 -- ============================================================
 
-create type if not exists seller_tier as enum ('free', 'silver', 'gold', 'diamond');
+-- CREATE TYPE has no IF NOT EXISTS in Postgres; guard it with a DO block instead.
+do $$ begin
+  create type seller_tier as enum ('free', 'silver', 'gold', 'diamond');
+exception when duplicate_object then null; end $$;
 
 do $$ begin
   alter type seller_tier owner to postgres;
