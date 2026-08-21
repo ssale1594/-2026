@@ -53,10 +53,14 @@ export async function deactivateSponsorship(sponsorshipId: number) {
   await requireAdmin();
   const supabase = await createClient();
 
-  await supabase
+  const { error } = await supabase
     .from("sponsorships")
     .update({ is_active: false })
     .eq("id", sponsorshipId);
+
+  if (error) {
+    throw new Error("ما قدرنا نوقف الرعاية — جرّب مرة ثانية.");
+  }
 
   revalidatePath("/admin/sponsorships");
 }

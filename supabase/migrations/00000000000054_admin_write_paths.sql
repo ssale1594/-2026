@@ -337,10 +337,15 @@ begin
   loop
     v_limit := r.free_listing_limit;
 
+    -- Keep the OLDEST v_limit published listings and pause the rest: order
+    -- ascending (oldest first) so OFFSET v_limit skips exactly those and
+    -- leaves the newer excess in `extra` to be paused. (An earlier version of
+    -- this ordered DESCENDING, which skipped the newest v_limit and paused
+    -- the oldest ones instead — backwards from the stated intent.)
     with extra as (
       select id from listings
        where listings.seller_id = r.id and status = 'published'
-       order by published_at desc nulls first, created_at desc
+       order by published_at asc nulls last, created_at asc
        offset v_limit
     )
     update listings l

@@ -33,9 +33,16 @@ export default async function AdminReferralsPage() {
                 <div>
                   <div className="font-medium">{referral.business_name}</div>
                   {referral.business_whatsapp && (
-                    <div className="text-sm text-black/60 dark:text-white/60 mt-1">
-                      {referral.business_whatsapp}
-                    </div>
+                    <a
+                      href={`https://wa.me/${referral.business_whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
+                        `مرحبًا، معك فريق سوق الزلفي. أحد الأعضاء رشّح "${referral.business_name}" للانضمام لمنصتنا — يسعدنا لو تنضمّون وتعرضون منتجاتكم للزلفي كلها.`
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-sm text-green-700 dark:text-green-400 hover:underline mt-1"
+                    >
+                      📱 {referral.business_whatsapp} — تواصل واتساب
+                    </a>
                   )}
                   {referral.business_description && (
                     <p className="text-sm text-black/60 dark:text-white/60 mt-2">
