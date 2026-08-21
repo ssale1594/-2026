@@ -267,6 +267,24 @@ export default async function Home() {
           </Link>
         </section>
 
+        <section className="mb-10 rounded-2xl border-2 border-dashed border-sky-500/30 bg-sky-500/10 dark:bg-sky-500/5 px-6 py-5 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="font-bold text-sky-800 dark:text-sky-200 inline-flex items-center gap-2">
+              🗺️ دليل الزلفي على الخريطة
+            </div>
+            <p className="text-sm text-sky-800/80 dark:text-sky-200/80 mt-0.5 max-w-2xl">
+              شوف المحلات والأسر المنتجة حسب الحي، واوصل لأي واحد منهم بضغطة
+              &quot;الاتجاهات&quot; أو اتصل مباشرة.
+            </p>
+          </div>
+          <Link
+            href="/map"
+            className="rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold px-5 py-2.5 text-sm shrink-0 shadow"
+          >
+            افتح الدليل ←
+          </Link>
+        </section>
+
         {/* CATEGORIES */}
         {topCatsAugmented.length > 0 && (
           <section className="mb-10">

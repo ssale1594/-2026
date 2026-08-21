@@ -36,6 +36,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 1,
     },
     {
+      // The map directory is a top-priority landing page for "محلات الزلفي"
+      // style searches — it lists every approved seller with a location.
+      url: `${siteUrl}/map`,
+      changeFrequency: "daily",
+      priority: 0.9,
+    },
+    {
       url: `${siteUrl}/whats-new`,
       changeFrequency: "daily",
       priority: 0.6,
