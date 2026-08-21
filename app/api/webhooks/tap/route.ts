@@ -1,17 +1,9 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { verifyWebhookSignature } from "@/lib/payments/tap";
-
-// This route needs to bypass RLS to update payments/subscriptions on behalf of
-// any seller, and it authenticates via the webhook signature instead of a user
-// session — a service-role client is the correct tool here, unlike every other
-// route in this app which uses the session-scoped client from lib/supabase/server.
-function createServiceRoleClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
-}
+// Bypasses RLS to update payments/subscriptions on behalf of any seller, and
+// authenticates via the webhook signature instead of a user session — the one
+// legitimate use of the service role alongside the cron routes.
+import { createServiceRoleClient } from "@/lib/supabase/service";
 
 export async function POST(request: Request) {
   const rawBody = await request.text();

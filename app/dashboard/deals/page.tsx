@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { requireSeller } from "@/lib/auth/permissions";
-import DealsClient from "@/app/deals/deals-client";
+import DealsClient from "@/components/deals/deals-client";
 import Link from "next/link";
 import { siteName } from "@/lib/seo";
 

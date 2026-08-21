@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { siteName } from "@/lib/seo";
 import { createClient } from "@/lib/supabase/server";
+import NavMenu, { type NavLink } from "@/components/nav-menu";
 
 const SELLER_LINKS = [
+  { href: "/dashboard", label: "لوحتي" },
   { href: "/dashboard/needs", label: "الطلبات" },
   { href: "/dashboard/offers", label: "عروضي" },
   { href: "/dashboard/bids", label: "🧾 العروض" },
@@ -10,6 +12,7 @@ const SELLER_LINKS = [
   { href: "/dashboard/analytics", label: "📊 الإحصائيات" },
   { href: "/dashboard/jobs", label: "وظائفي" },
   { href: "/dashboard/bookings", label: "الحجوزات" },
+  { href: "/dashboard/schedule", label: "🗓️ الدوام" },
   { href: "/dashboard/transactions", label: "التعاملات" },
   { href: "/dashboard/referrals", label: "ادعُ جارك" },
   { href: "/dashboard/subscription", label: "الاشتراك" },
@@ -45,49 +48,37 @@ export default async function DashboardHeader({
   const supabase = await createClient();
   const { data: unreadCount } = await supabase.rpc("unread_notification_count");
 
+  const links: NavLink[] = [
+    ...(backHref
+      ? [{ href: backHref, label: backLabel ?? "رجوع" }]
+      : []),
+    {
+      href: "/notifications",
+      label: "الإشعارات",
+      badge: typeof unreadCount === "number" ? unreadCount : undefined,
+    },
+    // The thirteen seller links only exist once a seller row does; /dashboard/setup
+    // renders this header without one.
+    ...(sellerName ? SELLER_LINKS : []),
+  ];
+
   return (
-    <header className="border-b border-black/[.08] dark:border-white/[.145]">
+    <header className="relative border-b border-black/[.08] dark:border-white/[.145]">
       <div className="mx-auto max-w-5xl px-4 py-5 flex items-center justify-between gap-4">
         <Link href="/" className="text-lg font-bold shrink-0">
           {siteName}
         </Link>
-        <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1">
-          {backHref && (
-            <Link
-              href={backHref}
-              className="text-sm text-black/60 dark:text-white/60 hover:underline"
-            >
-              {backLabel ?? "رجوع"}
-            </Link>
-          )}
-          <Link
-            href="/notifications"
-            className="text-sm text-black/60 dark:text-white/60 hover:underline"
-          >
-            الإشعارات
-            {typeof unreadCount === "number" && unreadCount > 0 && (
-              <span className="mr-1 rounded-full bg-foreground text-background text-xs px-1.5 py-0.5">
-                {unreadCount}
-              </span>
-            )}
-          </Link>
-          {sellerName && (
-            <>
-              {SELLER_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="text-sm text-black/60 dark:text-white/60 hover:underline"
-                >
-                  {link.label}
-                </Link>
-              ))}
+        <NavMenu
+          links={links}
+          label="قائمة لوحة البائع"
+          trailing={
+            sellerName ? (
               <span className="text-sm text-black/60 dark:text-white/60">
                 {sellerName}
               </span>
-            </>
-          )}
-        </div>
+            ) : undefined
+          }
+        />
       </div>
 
       {(title || breadcrumb) && (

@@ -3,33 +3,18 @@
 import { requireUser, requireAdmin } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-
-const REASONS: { code: string; label: string; desc: string }[] = [
-  { code: "spam", label: "رسائل مزعجة / سبام", desc: "محتوى مكرر أو ترويجي غير مرغوب فيه" },
-  { code: "fraud", label: "نصب أو احتيال", desc: "بيانات وهمية، طلب تحويل مبلغ، أو بائع غير أمين" },
-  { code: "inappropriate", label: "محتوى غير لائق", desc: "صور/وصف للكبار فقط أو مسيء أو مخالف للآداب" },
-  { code: "wrong_price", label: "تسعير غير عادل", desc: "السعر مبالغ فيه أو خداع (مثل سعر الشحن مخفي)" },
-  { code: "wrong_category", label: "تصنيف خاطئ", desc: "الإعلان موجود في الفئة الخطأ" },
-  { code: "duplicate", label: "إعلان مكرر", desc: "نفس المنتج مرفوع أكثر من مرة" },
-  { code: "expired", label: "غير متاح / بيع", desc: "السلعة بيعت أو الخدمة انتهت ولم يُحذف الإعلان" },
-  { code: "legal", label: "مخالفة قانونية", desc: "منتج غير مسموح ببيعه أو يخاطر الشريعة/القانون" },
-  { code: "other", label: "سبب آخر", desc: "اكتب تفاصيل البلاغ في المربع أدناه" },
-];
+import {
+  REPORT_REASONS,
+  isValidReasonCode,
+  type ReportTargetType,
+} from "@/lib/validation/report";
 
 export async function getReasonList() {
-  return REASONS;
+  return REPORT_REASONS;
 }
 
 export async function submitReport(
-  targetType:
-    | "listing"
-    | "seller"
-    | "review"
-    | "comment"
-    | "event"
-    | "job"
-    | "need"
-    | "offer",
+  targetType: ReportTargetType,
   targetId: number | string,
   reasonCode: string,
   details: string
@@ -37,15 +22,21 @@ export async function submitReport(
   const user = await requireUser();
   const supabase = await createClient();
 
-  if (!REASONS.find((r) => r.code === reasonCode)) {
+  if (!isValidReasonCode(reasonCode)) {
     return { error: "اختر سببًا صالحًا من القائمة" };
   }
-  if (!targetType || !targetId) return { error: "الهدف غير صالح" };
+  if (!targetType || targetId === null || targetId === undefined || targetId === "") {
+    return { error: "الهدف غير صالح" };
+  }
 
+  // target_id is text (migration 54). It used to be bigint, and this line used
+  // to be Number(targetId) — which is NaN for a listing, whose id is a uuid.
+  // Reporting a listing is the only place ReportDialog is actually used, so the
+  // whole feature failed every time.
   const insQ = await supabase.from("content_reports").insert({
     reporter_id: user.id,
     target_type: targetType,
-    target_id: typeof targetId === "string" ? Number(targetId) : targetId,
+    target_id: String(targetId),
     reason_code: reasonCode,
     details: details.slice(0, 2000),
   });
@@ -60,10 +51,8 @@ export async function adminSetReportStatus(
   resolution: string,
   actionTaken: string
 ) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const supabase = await createClient();
-  const { data: adminRow }: any = await supabase.auth.getUser();
-  const adminId = adminRow?.user?.id;
 
   const updQ = await supabase
     .from("content_reports")
@@ -71,7 +60,7 @@ export async function adminSetReportStatus(
       status,
       resolution: resolution || null,
       action_taken: actionTaken || null,
-      handled_by: adminId,
+      handled_by: admin.id,
       handled_at: new Date().toISOString(),
     })
     .eq("id", reportId);
@@ -81,22 +70,27 @@ export async function adminSetReportStatus(
   return { ok: true };
 }
 
-export async function adminTakeDownListing(listingId: string, status = "archived", note = "") {
+export async function adminTakeDownListing(
+  listingId: string,
+  status = "archived",
+  note = ""
+) {
   await requireAdmin();
   const supabase = await createClient();
-  const updQ = await supabase
-    .from("listings")
-    .update({
-      status,
-      rejection_reason:
-        note ||
-        "تمت إزالة هذا الإعلان من قبل الإدارة بناءً على تقرير مُقدّم - يرجى التواصل مع الإدارة للحل.",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", listingId);
-  if (updQ.error) return { error: updQ.error.message };
-  revalidatePath(`/listing`);
-  revalidatePath(`/search`);
+
+  // Goes through the RPC for the same reason as app/admin/actions.ts, and
+  // because rejection_reason is revoked from `authenticated` (migration 54).
+  const { error } = await supabase.rpc("admin_set_listing_status", {
+    p_listing_id: listingId,
+    p_status: status,
+    p_reason:
+      note ||
+      "تمت إزالة هذا الإعلان من قبل الإدارة بناءً على بلاغ — تواصل مع الإدارة للحل.",
+  });
+  if (error) return { error: error.message };
+
+  revalidatePath("/listing");
+  revalidatePath("/search");
   revalidatePath("/admin/moderation");
   return { ok: true };
 }
@@ -107,36 +101,33 @@ export async function adminWarnOrBanSeller(
   note: string
 ) {
   await requireAdmin();
-  const supabase = await createClient();
-  if (mode === "ban") {
-    const updQ = await supabase
-      .from("profiles")
-      .update({
-        verification_status: "rejected",
-        rejection_reason: note || "حظر من قبل الإدارة بناءً على تقارير المحتوى.",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", sellerId);
-    if (updQ.error) return { error: updQ.error.message };
-    // أرشفة كل إعلاناته
-    await supabase
-      .from("listings")
-      .update({
-        status: "archived",
-        rejection_reason: "أرشفة تلقائية بسبب حظر الحساب.",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("seller_id", sellerId)
-      .eq("status", "published");
-  } else {
-    // Warn: note gets added via action_taken in moderation row (we don't have warn column, using update message is enough)
+
+  if (mode === "warn") {
     return {
       ok: true,
-      info: "تم تسجيل التحذير في الإجراء المتخذ. انسخ الرسالة التالية وأرسلها للبائع عبر واتساب: " + note,
+      info:
+        "تم تسجيل التحذير في الإجراء المتخذ. انسخ الرسالة التالية وأرسلها للبائع عبر واتساب: " +
+        note,
     };
   }
-  revalidatePath(`/seller`);
+
+  const supabase = await createClient();
+
+  // This previously updated `profiles` with verification_status and
+  // rejection_reason — both of which live on `sellers`, not `profiles`. It
+  // failed with "column does not exist" on every ban. The RPC suspends the
+  // seller and archives their published listings in one transaction.
+  const { data: archivedCount, error } = await supabase.rpc("admin_ban_seller", {
+    p_seller_id: sellerId,
+    p_reason: note || null,
+  });
+  if (error) return { error: error.message };
+
+  revalidatePath("/seller");
   revalidatePath("/admin/moderation");
   revalidatePath("/admin/sellers");
-  return { ok: true };
+  return {
+    ok: true,
+    info: `تم حظر البائع وأرشفة ${archivedCount ?? 0} إعلان.`,
+  };
 }

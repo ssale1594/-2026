@@ -1,6 +1,9 @@
 "use server";
 
-import { createClient as createServiceClient } from "@/lib/supabase/server";
+// The cron caller has no user session, so this must be the service-role
+// client — with the session client every RPC below silently returned nothing,
+// because get_instant_email_batch() et al are granted to service_role only.
+import { createServiceRoleClient } from "@/lib/supabase/service";
 import { sendEmail } from "./provider";
 import { renderInstantEmail, renderDigestEmail } from "./templates";
 import { siteName, siteUrl } from "@/lib/seo";
@@ -15,7 +18,7 @@ const YEAR = new Date().getFullYear();
 
 // ---------- Batch: instant notifications ----------
 async function processInstantBatch(batchSize = 50): Promise<WorkerStats["instant"]> {
-  const supabase = await createServiceClient();
+  const supabase = createServiceRoleClient();
   const res = await supabase.rpc("get_instant_email_batch", { p_batch_size: batchSize });
   const rows: Array<{
     notification_id: number;
@@ -106,7 +109,7 @@ async function processInstantBatch(batchSize = 50): Promise<WorkerStats["instant
 
 // ---------- Batch: daily digest ----------
 async function processDigestBatch(batchSize = 50): Promise<WorkerStats["digest"]> {
-  const supabase = await createServiceClient();
+  const supabase = createServiceRoleClient();
   const res = await supabase.rpc("get_email_digest_batch", { p_batch_size: batchSize });
   const rows: Array<{
     user_id: string;
@@ -192,12 +195,10 @@ export async function runEmailWorker(): Promise<WorkerStats> {
   return { instant, digest };
 }
 
-// Non-admin protected: used by cron webhook secured via bearer token.
-export async function runEmailWorkerCron(bearerToken: string | null): Promise<WorkerStats> {
-  const expected = process.env.EMAIL_WORKER_TOKEN;
-  if (!expected || expected.length < 16 || bearerToken !== expected) {
-    throw new Error("Unauthorized cron call: invalid EMAIL_WORKER_TOKEN");
-  }
+// Authorization lives in the route (lib/cron-auth.ts) so that every /api/cron
+// endpoint checks the same secret in the same way — this used to compare
+// against EMAIL_WORKER_TOKEN, which is not what Vercel Cron sends.
+export async function runEmailWorkerCron(): Promise<WorkerStats> {
   const instant = await processInstantBatch(100);
   const digest = await processDigestBatch(50);
   return { instant, digest };

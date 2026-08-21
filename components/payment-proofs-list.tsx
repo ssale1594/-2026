@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import {
   createPaymentProofSignedUrl,
   cancelPayment,
-} from "@/app/deals/payment-actions";
+} from "@/components/deals/payment-actions";
 
 type Proof = {
   id: number;
