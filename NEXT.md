@@ -9,9 +9,10 @@
 
 هذي الأشياء الوحيدة الموقوفة عليك. كل شي غيرها أنا أقدر أكمله.
 
-### 1. طبّق الهجرة 54 على Supabase — **الأهم، ما فيه شي يشتغل بدونها**
+### 1. طبّق الهجرتين 54 و55 على Supabase — **الأهم، ما فيه شي يشتغل بدونها**
 افتح [Supabase SQL Editor](https://supabase.com/dashboard/project/ownxrmyxbryizpynrzrb/sql)،
 والصق **كامل** محتوى `supabase/migrations/00000000000054_admin_write_paths.sql` ثم Run.
+بعد ما تنجح، الصق `00000000000055_seller_location.sql` ثم Run (لصقة منفصلة).
 
 ⚠️ الصقه **كاملًا دفعة واحدة** — محرر Supabase ينفّذ اللصقة كمعاملة واحدة، فأي خطأ يلغي كل شي.
 لو طلع خطأ، انسخ نص الخطأ وأعطني إياه.
@@ -57,13 +58,15 @@ npx vercel env add CRON_SECRET production
 | 12 | همبرغر للجوال بلوحة البائع (13 رابط) والأدمن (11 رابط) | `components/nav-menu.tsx` |
 | 13 | توحيد قائمة أسباب البلاغ بملف واحد | `lib/validation/report.ts` |
 | 14 | نقل `app/deals/` → `components/deals/` (مجلد route بلا page) | — |
+| 15 | **فكرة جديدة: دليل الزلفي على الخريطة** — `/map`، موقع لكل بائع، اتجاهات، اتصال، تتبع | `migrations/…55`, `app/map`, `app/dashboard/location` |
+| 16 | **فكرة جديدة: ملصق QR للمحل** — `/dashboard/qr` قابل للطباعة + تتبع `?src=qr` | `app/dashboard/qr` |
+| 17 | تتبع نقرة واتساب بصفحة البائع (كانت بلا تتبع إطلاقًا) | `components/seller-contact-buttons.tsx` |
 
 ---
 
 ## ⏭️ المتبقي — كمّل من هنا بالترتيب
 
 ### أ. إصلاحات صغيرة باقية
-- [ ] تتبع نقرة واتساب بصفحة البائع (`app/seller/[slug]/page.tsx`) — يحتاج جدول `seller_contact_clicks` بهجرة 55
 - [ ] `NEXT_PUBLIC_SITE_URL` فاضي بـ`.env.local` محليًا
 - [ ] تقليل `as any` (213 موضع) — ولّد أنواع Supabase
 - [ ] تقسيم الملفات الضخمة (`moderation-client.tsx` 607 سطر، `seller/[slug]/page.tsx` 555)
