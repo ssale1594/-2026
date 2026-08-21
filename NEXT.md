@@ -13,6 +13,7 @@
 افتح [Supabase SQL Editor](https://supabase.com/dashboard/project/ownxrmyxbryizpynrzrb/sql)،
 والصق **كامل** محتوى `supabase/migrations/00000000000054_admin_write_paths.sql` ثم Run.
 بعد ما تنجح، الصق `00000000000055_seller_location.sql` ثم Run (لصقة منفصلة).
+بعدها الصق `00000000000057_neighborhood_ambassadors.sql` ثم Run (لصقة ثالثة منفصلة).
 
 ⚠️ الصقه **كاملًا دفعة واحدة** — محرر Supabase ينفّذ اللصقة كمعاملة واحدة، فأي خطأ يلغي كل شي.
 لو طلع خطأ، انسخ نص الخطأ وأعطني إياه.
@@ -61,6 +62,8 @@ npx vercel env add CRON_SECRET production
 | 15 | **فكرة جديدة: دليل الزلفي على الخريطة** — `/map`، موقع لكل بائع، اتجاهات، اتصال، تتبع | `migrations/…55`, `app/map`, `app/dashboard/location` |
 | 16 | **فكرة جديدة: ملصق QR للمحل** — `/dashboard/qr` قابل للطباعة + تتبع `?src=qr` | `app/dashboard/qr` |
 | 17 | تتبع نقرة واتساب بصفحة البائع (كانت بلا تتبع إطلاقًا) | `components/seller-contact-buttons.tsx` |
+| 18 | حماية فجوة النشر: صفحة البائع كانت تعطي 404 قبل تطبيق هجرة 55 | `lib/data/sellers.ts` |
+| 19 | **فكرة جديدة: سفراء الأحياء** — تقديم، مراجعة إدارية، بادج علني بصفحة الحي، مكافأة شرائح إعلان | `migrations/…57`, `app/ambassadors`, `app/admin/ambassadors` |
 
 ---
 

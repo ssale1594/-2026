@@ -3,6 +3,7 @@ import NavMenu, { type NavLink } from "@/components/nav-menu";
 
 const TABS = [
   { key: "sellers", href: "/admin/sellers", label: "البائعون" },
+  { key: "ambassadors", href: "/admin/ambassadors", label: "سفراء الأحياء" },
   { key: "listings", href: "/admin/listings", label: "الإعلانات" },
   { key: "offers", href: "/admin/offers", label: "العروض" },
   { key: "jobs", href: "/admin/jobs", label: "الوظائف" },

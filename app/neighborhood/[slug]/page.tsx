@@ -37,28 +37,40 @@ export default async function NeighborhoodPage({
   }
 
   const supabase = await createClient();
-  const { data: listings } = await supabase
-    .from("listings")
-    .select(
-      "id, title, slug, price, price_negotiable, is_featured, categories(name_ar), sellers(business_name, slug), listing_images(storage_path, is_primary)"
-    )
-    .eq("neighborhood_id", neighborhood.id)
-    .eq("status", "published")
-    .order("is_featured", { ascending: false })
-    .order("created_at", { ascending: false })
-    .returns<
-      {
-        id: string;
-        title: string;
-        slug: string;
-        price: number | null;
-        price_negotiable: boolean;
-        is_featured: boolean;
-        categories: { name_ar: string } | null;
-        sellers: { business_name: string; slug: string } | null;
-        listing_images: { storage_path: string; is_primary: boolean }[];
-      }[]
-    >();
+  const [{ data: listings }, ambassadorsQ] = await Promise.all([
+    supabase
+      .from("listings")
+      .select(
+        "id, title, slug, price, price_negotiable, is_featured, categories(name_ar), sellers(business_name, slug), listing_images(storage_path, is_primary)"
+      )
+      .eq("neighborhood_id", neighborhood.id)
+      .eq("status", "published")
+      .order("is_featured", { ascending: false })
+      .order("created_at", { ascending: false })
+      .returns<
+        {
+          id: string;
+          title: string;
+          slug: string;
+          price: number | null;
+          price_negotiable: boolean;
+          is_featured: boolean;
+          categories: { name_ar: string } | null;
+          sellers: { business_name: string; slug: string } | null;
+          listing_images: { storage_path: string; is_primary: boolean }[];
+        }[]
+      >(),
+    supabase.rpc("neighborhood_ambassadors_public", {
+      p_neighborhood_id: neighborhood.id,
+    }),
+  ]);
+
+  const ambassadors =
+    (ambassadorsQ.data as {
+      display_name: string;
+      is_seller: boolean;
+      seller_slug: string | null;
+    }[]) ?? [];
 
   return (
     <div className="min-h-screen font-sans">
@@ -74,9 +86,36 @@ export default async function NeighborhoodPage({
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-10">
-        <h1 className="text-xl font-semibold mb-6">
+        <h1 className="text-xl font-semibold mb-2">
           إعلانات حي {neighborhood.name_ar}
         </h1>
+
+        {ambassadors.length > 0 && (
+          <p className="text-sm text-black/60 dark:text-white/60 mb-6">
+            🙌 سفراء الحي:{" "}
+            {ambassadors.map((a, i) => (
+              <span key={i}>
+                {a.is_seller && a.seller_slug ? (
+                  <Link href={`/seller/${a.seller_slug}`} className="underline hover:no-underline">
+                    {a.display_name}
+                  </Link>
+                ) : (
+                  a.display_name
+                )}
+                {i < ambassadors.length - 1 && "، "}
+              </span>
+            ))}
+          </p>
+        )}
+        {ambassadors.length === 0 && (
+          <p className="text-sm text-black/50 dark:text-white/50 mb-6">
+            ما فيه سفير لهذا الحي بعد —{" "}
+            <Link href="/ambassadors" className="underline hover:no-underline">
+              كن أول سفير له
+            </Link>
+            .
+          </p>
+        )}
 
         {!listings || listings.length === 0 ? (
           <p className="text-black/60 dark:text-white/60">

@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/search", label: "🔎 البحث المتقدم" },
   { href: "/offers", label: "💸 عروض اليوم" },
   { href: "/needs", label: "🙋 احتياجات الجيران" },
+  { href: "/ambassadors", label: "🙌 سفراء الأحياء" },
   { href: "/polls", label: "🗳️ الاستفتاء الأسبوعي" },
   { href: "/jobs", label: "💼 وظائف" },
   { href: "/events", label: "🎪 فعاليات" },
