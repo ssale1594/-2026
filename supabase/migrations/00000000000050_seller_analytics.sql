@@ -50,7 +50,7 @@ begin
     coalesce((select count(*) from deals d
       where d.seller_id = p_seller_id and d.completed_at::date = days.d), 0)::bigint,
     coalesce((select coalesce(sum(d.price_agreed_sar), 0) from deals d
-      where d.seller_id = p_seller_id and d.status = 'completed' and d.completed_at::date = days.d), 0)::numeric;
+      where d.seller_id = p_seller_id and d.status = 'completed' and d.completed_at::date = days.d), 0)::numeric
   from days
   order by days.d asc;
 end; $$;
