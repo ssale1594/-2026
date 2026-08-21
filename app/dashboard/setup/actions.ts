@@ -43,5 +43,13 @@ export async function createSellerProfile(
     return { error: "ما قدرنا ننشئ الحساب — جرّب مرة ثانية." };
   }
 
+  // Attribution is best-effort: a bad or missing code must never block signup,
+  // so a failure here is deliberately swallowed. claim_referral() re-validates
+  // the code server-side and ignores self-referrals.
+  const referralCode = formData.get("referralCode");
+  if (typeof referralCode === "string" && referralCode.trim()) {
+    await supabase.rpc("claim_referral", { p_code: referralCode.trim() });
+  }
+
   redirect("/dashboard");
 }

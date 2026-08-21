@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireSeller } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getNeighborhoods } from "@/lib/data/neighborhoods";
 import DashboardHeader from "../../../dashboard-header";
 import EditListingForm from "./edit-listing-form";
 import ImageManager from "./image-manager";
@@ -16,7 +17,9 @@ export default async function EditListingPage({
 
   const { data: listing } = await supabase
     .from("listings")
-    .select("id, title, description, category_id, price, price_negotiable")
+    .select(
+      "id, title, description, category_id, neighborhood_id, price, price_negotiable"
+    )
     .eq("id", id)
     .eq("seller_id", seller.id)
     .single();
@@ -25,11 +28,14 @@ export default async function EditListingPage({
     notFound();
   }
 
-  const { data: categories } = await supabase
-    .from("categories")
-    .select("id, name_ar")
-    .eq("is_active", true)
-    .order("sort_order");
+  const [{ data: categories }, neighborhoods] = await Promise.all([
+    supabase
+      .from("categories")
+      .select("id, name_ar")
+      .eq("is_active", true)
+      .order("sort_order"),
+    getNeighborhoods(),
+  ]);
 
   const { data: images } = await supabase
     .from("listing_images")
@@ -53,7 +59,11 @@ export default async function EditListingPage({
             images={images ?? []}
           />
         </div>
-        <EditListingForm listing={listing} categories={categories ?? []} />
+        <EditListingForm
+          listing={listing}
+          categories={categories ?? []}
+          neighborhoods={neighborhoods}
+        />
       </main>
     </div>
   );

@@ -3,7 +3,11 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export default function LoginForm() {
+export default function LoginForm({
+  referralCode = "",
+}: {
+  referralCode?: string;
+}) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
@@ -12,10 +16,18 @@ export default function LoginForm() {
     event.preventDefault();
     setStatus("sending");
 
+    // Carry the referral code through the magic-link round trip: the user
+    // leaves for their email client and comes back on a fresh request, so it
+    // has to ride along in the callback URL or the attribution is lost.
+    const callback = new URL(`${window.location.origin}/auth/callback`);
+    if (referralCode) {
+      callback.searchParams.set("ref", referralCode);
+    }
+
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+      options: { emailRedirectTo: callback.toString() },
     });
 
     if (error) {

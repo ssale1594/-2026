@@ -2,7 +2,13 @@ import Link from "next/link";
 import { siteName } from "@/lib/seo";
 import LoginForm from "./login-form";
 
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ref?: string }>;
+}) {
+  const { ref } = await searchParams;
+
   return (
     <div className="min-h-screen font-sans">
       <header className="border-b border-black/[.08] dark:border-white/[.145]">
@@ -18,7 +24,7 @@ export default function LoginPage() {
         <p className="text-sm text-black/60 dark:text-white/60 mb-6">
           نرسل لك رابط دخول على بريدك، بدون كلمة مرور.
         </p>
-        <LoginForm />
+        <LoginForm referralCode={ref ?? ""} />
       </main>
     </div>
   );

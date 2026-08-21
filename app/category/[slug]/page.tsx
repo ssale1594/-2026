@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { pageTitle, siteName } from "@/lib/seo";
 import { listingImageUrl } from "@/lib/storage";
 import { getCategoryBySlug } from "@/lib/data/categories";
+import { getSponsorship } from "@/lib/data/sponsorships";
+import SponsorBanner from "@/components/sponsor-banner";
 
 export async function generateMetadata({
   params,
@@ -37,6 +39,7 @@ export default async function CategoryPage({
   }
 
   const supabase = await createClient();
+  const sponsorship = await getSponsorship("category", category.id);
   const { data: listings } = await supabase
     .from("listings")
     .select(
@@ -74,6 +77,8 @@ export default async function CategoryPage({
 
       <main className="mx-auto max-w-5xl px-4 py-10">
         <h1 className="text-xl font-semibold mb-6">{category.name_ar}</h1>
+
+        <SponsorBanner sponsorship={sponsorship} />
 
         {!listings || listings.length === 0 ? (
           <p className="text-black/60 dark:text-white/60">

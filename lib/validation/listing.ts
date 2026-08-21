@@ -5,6 +5,7 @@ export const listingInputSchema = z.object({
   title: z.string().trim().min(3, "العنوان قصير جدًا").max(120, "العنوان طويل"),
   description: z.string().trim().max(2000, "الوصف طويل").optional(),
   categoryId: z.coerce.number().int().positive("اختر الفئة"),
+  neighborhoodId: z.coerce.number().int().positive().optional(),
   price: z.coerce.number().nonnegative("السعر لا يكون سالبًا").optional(),
   priceNegotiable: z.coerce.boolean().default(false),
 });

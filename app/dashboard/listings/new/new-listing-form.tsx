@@ -10,8 +10,10 @@ const fieldClass =
 
 export default function NewListingForm({
   categories,
+  neighborhoods,
 }: {
   categories: { id: number; name_ar: string }[];
+  neighborhoods: { id: number; name_ar: string }[];
 }) {
   const [state, formAction, isPending] = useActionState(
     createListing,
@@ -32,6 +34,18 @@ export default function NewListingForm({
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.name_ar}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label className="flex flex-col gap-1">
+        <span className="text-sm">الحي — اختياري</span>
+        <select name="neighborhoodId" className={fieldClass}>
+          <option value="">بدون تحديد حي</option>
+          {neighborhoods.map((neighborhood) => (
+            <option key={neighborhood.id} value={neighborhood.id}>
+              {neighborhood.name_ar}
             </option>
           ))}
         </select>

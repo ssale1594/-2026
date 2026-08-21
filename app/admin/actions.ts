@@ -7,15 +7,15 @@ import { createClient } from "@/lib/supabase/server";
 async function logAdminAction(
   adminId: string,
   action: string,
-  targetType: "seller" | "listing",
-  targetId: string
+  targetType: "seller" | "listing" | "referral" | "offer" | "event" | "job",
+  targetId: string | number
 ) {
   const supabase = await createClient();
   await supabase.from("admin_actions").insert({
     admin_id: adminId,
     action,
     target_type: targetType,
-    target_id: targetId,
+    target_id: String(targetId),
   });
 }
 
@@ -52,4 +52,56 @@ export async function setListingStatus(
 
   await logAdminAction(admin.id, `listing_${status}`, "listing", listingId);
   revalidatePath("/admin/listings");
+}
+
+export async function setEventStatus(
+  eventId: number,
+  status: "published" | "rejected"
+) {
+  const admin = await requireAdmin();
+  const supabase = await createClient();
+
+  await supabase.from("events").update({ status }).eq("id", eventId);
+
+  await logAdminAction(admin.id, `event_${status}`, "event", eventId);
+  revalidatePath("/admin/events");
+}
+
+export async function setJobStatus(
+  jobId: number,
+  status: "published" | "rejected"
+) {
+  const admin = await requireAdmin();
+  const supabase = await createClient();
+
+  await supabase.from("jobs").update({ status }).eq("id", jobId);
+
+  await logAdminAction(admin.id, `job_${status}`, "job", jobId);
+  revalidatePath("/admin/jobs");
+}
+
+export async function setOfferStatus(
+  offerId: number,
+  status: "published" | "rejected"
+) {
+  const admin = await requireAdmin();
+  const supabase = await createClient();
+
+  await supabase.from("offers").update({ status }).eq("id", offerId);
+
+  await logAdminAction(admin.id, `offer_${status}`, "offer", offerId);
+  revalidatePath("/admin/offers");
+}
+
+export async function setReferralStatus(
+  referralId: number,
+  status: "contacted" | "dismissed"
+) {
+  const admin = await requireAdmin();
+  const supabase = await createClient();
+
+  await supabase.from("referrals").update({ status }).eq("id", referralId);
+
+  await logAdminAction(admin.id, `referral_${status}`, "referral", referralId);
+  revalidatePath("/admin/referrals");
 }

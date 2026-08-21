@@ -1,5 +1,6 @@
 import { requireSeller } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
+import { getNeighborhoods } from "@/lib/data/neighborhoods";
 import DashboardHeader from "../../dashboard-header";
 import NewListingForm from "./new-listing-form";
 
@@ -7,11 +8,14 @@ export default async function NewListingPage() {
   await requireSeller();
   const supabase = await createClient();
 
-  const { data: categories } = await supabase
-    .from("categories")
-    .select("id, name_ar")
-    .eq("is_active", true)
-    .order("sort_order");
+  const [{ data: categories }, neighborhoods] = await Promise.all([
+    supabase
+      .from("categories")
+      .select("id, name_ar")
+      .eq("is_active", true)
+      .order("sort_order"),
+    getNeighborhoods(),
+  ]);
 
   return (
     <div className="min-h-screen font-sans">
@@ -22,7 +26,7 @@ export default async function NewListingPage() {
         <p className="text-sm text-black/60 dark:text-white/60 mb-6">
           الإعلان يروح للمراجعة قبل ما يظهر للزوار.
         </p>
-        <NewListingForm categories={categories ?? []} />
+        <NewListingForm categories={categories ?? []} neighborhoods={neighborhoods} />
       </main>
     </div>
   );
