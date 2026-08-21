@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 const LINKS = [
+  { href: "/map", label: "🗺️ دليل الزلفي" },
   { href: "/search", label: "🔎 البحث المتقدم" },
   { href: "/offers", label: "💸 عروض اليوم" },
   { href: "/needs", label: "🙋 احتياجات الجيران" },
