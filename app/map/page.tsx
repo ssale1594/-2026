@@ -5,6 +5,7 @@ import SellerContactButtons, {
   directionsHref,
 } from "@/components/seller-contact-buttons";
 import SiteNav from "@/components/site-nav";
+import ClaimButton from "./claim-button";
 
 export const metadata = {
   title: pageTitle("دليل الزلفي على الخريطة"),
@@ -30,6 +31,18 @@ type DirectoryRow = {
   listing_count: number;
 };
 
+type UnclaimedRow = {
+  id: string;
+  business_name: string;
+  category_name: string | null;
+  neighborhood_name: string | null;
+  phone: string | null;
+  whatsapp_number: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  address_note: string | null;
+};
+
 const TYPE_LABEL: Record<string, string> = {
   shop: "🏪 محل",
   home_producer: "🏠 أسرة منتجة",
@@ -47,7 +60,7 @@ const ZULFI_CENTER = { lat: 26.2994, lon: 44.8144 };
 // pins would mean shipping Leaflet + a tile budget; the list below already
 // gives every seller a one-tap "الاتجاهات" link into the user's real maps app,
 // which is what someone standing in the street actually wants.
-function osmEmbedSrc(rows: DirectoryRow[]): string {
+function osmEmbedSrc(rows: { latitude: number | null; longitude: number | null }[]): string {
   const located = rows.filter((r) => r.latitude !== null && r.longitude !== null);
 
   if (located.length === 0) {
@@ -87,8 +100,15 @@ export default async function MapDirectoryPage({
 
   const supabase = await createClient();
 
-  const [dirQ, hoodsQ] = await Promise.all([
+  const [dirQ, publicDirQ, hoodsQ] = await Promise.all([
     supabase.rpc("map_directory", {
+      p_neighborhood_id:
+        neighborhoodId && Number.isFinite(neighborhoodId) ? neighborhoodId : null,
+    }),
+    // Includes unclaimed public-directory entries too (PLAN.md §23) — public
+    // sourced info for businesses that haven't signed up yet, so the site has
+    // useful content from day one instead of only registered sellers.
+    supabase.rpc("public_directory", {
       p_neighborhood_id:
         neighborhoodId && Number.isFinite(neighborhoodId) ? neighborhoodId : null,
     }),
@@ -97,6 +117,11 @@ export default async function MapDirectoryPage({
 
   const rows = (dirQ.data ?? []) as DirectoryRow[];
   const hoods = (hoodsQ.data ?? []) as { id: number; name_ar: string }[];
+  const unclaimed = (
+    ((publicDirQ.data ?? []) as (UnclaimedRow & { source: string })[]).filter(
+      (r) => r.source === "directory"
+    )
+  ) as UnclaimedRow[];
 
   const located = rows.filter((r) => r.latitude !== null && r.longitude !== null);
   const unlocated = rows.filter((r) => r.latitude === null || r.longitude === null);
@@ -122,7 +147,7 @@ export default async function MapDirectoryPage({
         <div className="rounded-xl overflow-hidden border border-black/[.08] dark:border-white/[.145] mb-6">
           <iframe
             title="خريطة الزلفي"
-            src={osmEmbedSrc(rows)}
+            src={osmEmbedSrc([...rows, ...unclaimed])}
             className="w-full h-[320px] sm:h-[420px] border-0"
             loading="lazy"
             referrerPolicy="no-referrer-when-downgrade"
@@ -157,7 +182,7 @@ export default async function MapDirectoryPage({
           </nav>
         )}
 
-        {rows.length === 0 ? (
+        {rows.length === 0 && unclaimed.length === 0 ? (
           <p className="rounded-lg border border-black/[.08] dark:border-white/[.145] px-4 py-8 text-center text-sm text-black/60 dark:text-white/60">
             ما فيه بائعون معتمدون بهذا الحي بعد.
           </p>
@@ -173,9 +198,82 @@ export default async function MapDirectoryPage({
                 <SellerGrid rows={unlocated} />
               </section>
             )}
+
+            {unclaimed.length > 0 && (
+              <section className="mt-8">
+                <h2 className="text-sm font-semibold text-black/60 dark:text-white/60 mb-3">
+                  📖 معلومات عامة — أصحابها ما سجّلوا بعد ({unclaimed.length})
+                </h2>
+                <DirectoryGrid rows={unclaimed} />
+              </section>
+            )}
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+function DirectoryGrid({ rows }: { rows: UnclaimedRow[] }) {
+  if (rows.length === 0) return null;
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {rows.map((entry) => {
+        const directions = directionsHref(entry.latitude, entry.longitude);
+        return (
+          <article
+            key={entry.id}
+            className="rounded-xl border border-dashed border-black/[.15] dark:border-white/[.2] p-4 flex flex-col gap-3"
+          >
+            <div className="min-w-0">
+              <div className="font-bold truncate">{entry.business_name}</div>
+              <p className="text-xs text-black/55 dark:text-white/55 mt-0.5">
+                {entry.category_name}
+                {entry.neighborhood_name && ` · ${entry.neighborhood_name}`}
+              </p>
+            </div>
+
+            {entry.address_note && (
+              <p className="text-xs text-black/60 dark:text-white/60">
+                {entry.address_note}
+              </p>
+            )}
+
+            <div className="flex flex-wrap gap-2">
+              {entry.whatsapp_number && (
+                <a
+                  href={`https://wa.me/${entry.whatsapp_number.replace(/\D/g, "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-full bg-green-600 text-white text-xs font-medium px-3 py-1.5 hover:bg-green-700"
+                >
+                  واتساب
+                </a>
+              )}
+              {entry.phone && (
+                <a
+                  href={`tel:${entry.phone.replace(/[^\d+]/g, "")}`}
+                  className="rounded-full border border-black/[.12] dark:border-white/[.2] text-xs font-medium px-3 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
+                >
+                  📞 اتصال
+                </a>
+              )}
+              {directions && (
+                <a
+                  href={directions}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-full border border-black/[.12] dark:border-white/[.2] text-xs font-medium px-3 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
+                >
+                  📍 الاتجاهات
+                </a>
+              )}
+              <ClaimButton directoryEntryId={entry.id} businessName={entry.business_name} />
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }
