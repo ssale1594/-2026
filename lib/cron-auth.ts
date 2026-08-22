@@ -8,11 +8,25 @@
 // endpoint that mutates listings and sends email is worse than one that doesn't
 // run at all, and a silently-open route is exactly the kind of thing nobody
 // notices until it is abused.
+// Distinct from a generic Error so cronErrorResponse can tell "not configured
+// yet" (503 — expected until the operator sets the secret) and "wrong/missing
+// token" (401) apart from an actual bug in the job itself (500). A plain
+// message-string comparison would misfire if a real internal error happened
+// to throw the same text.
+class CronAuthError extends Error {
+  constructor(message: string, readonly status: 401 | 503) {
+    super(message);
+  }
+}
+
 export function assertCronAuthorized(request: Request): void {
   const secret = process.env.CRON_SECRET;
 
   if (!secret || secret.length < 16) {
-    throw new Error("CRON_SECRET غير مضبوط (32 حرفًا على الأقل) — المهمة موقوفة.");
+    throw new CronAuthError(
+      "CRON_SECRET غير مضبوط (32 حرفًا على الأقل) — المهمة موقوفة عمدًا.",
+      503
+    );
   }
 
   const header =
@@ -21,13 +35,13 @@ export function assertCronAuthorized(request: Request): void {
   const queryToken = new URL(request.url).searchParams.get("token");
 
   if (bearer !== secret && queryToken !== secret) {
-    throw new Error("Unauthorized");
+    throw new CronAuthError("Unauthorized", 401);
   }
 }
 
 export function cronErrorResponse(err: unknown): Response {
+  const status = err instanceof CronAuthError ? err.status : 500;
   const message = err instanceof Error ? err.message : String(err);
-  const status = message === "Unauthorized" ? 401 : 500;
 
   return new Response(JSON.stringify({ ok: false, error: message }), {
     status,
