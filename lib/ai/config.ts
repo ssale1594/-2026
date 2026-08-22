@@ -8,7 +8,9 @@
 //   ANTHROPIC_API_KEY=sk-ant-...
 //   AI_LISTING_WRITER_ENABLED=1
 
-export const AI_MODEL = "claude-opus-5";
+// Sonnet 5 لا Opus: المهمة تصنيف وصياغة عربية قصيرة بصيغة JSON محددة —
+// لا استدلال معقّد متعدد الخطوات يستدعي Opus. ~60% أرخص بالسعر التعريفي.
+export const AI_MODEL = "claude-sonnet-5";
 
 // كتابة إعلان تصنيف وصياغة، لا استدلال معقّد — الجهد المتوسط يعطي
 // جودة عربية جيدة بتكلفة أقل من الافتراضي (high).
