@@ -88,8 +88,8 @@ export default async function SellerPage({
         .eq("status", "closed")
         .order("week_end_date", { ascending: false })
         .limit(5),
-      (supabase.rpc as any)("seller_completed_deals", { p_seller_id: seller.id }),
-      (supabase.rpc as any)("get_seller_subscription", { p_seller_id: seller.id }),
+      (supabase.rpc as any)("seller_public_deal_stats", { p_seller_id: seller.id }),
+      (supabase.rpc as any)("seller_public_tier", { p_seller_id: seller.id }),
       (supabase.rpc as any)("seller_endorsement_summary", { p_seller_id: seller.id }),
       (supabase.rpc as any)("seller_milestone_metrics", { p_seller_id: seller.id }),
       (supabase.rpc as any)("seller_recommend_rate", { p_seller_id: seller.id }),
@@ -112,14 +112,13 @@ export default async function SellerPage({
   const acceptsBookings = ((availabilityQ?.data as any[]) ?? []).length > 0;
 
   const rating = (ratingRows as { average: number | null; total: number }[] | null)?.[0];
+  // النسخة العامة ترجّع إشارات الثقة فقط. الإيراد وعدد الخصومات
+  // والصفقات قيد التنفيذ بيان تجاري خاص — لا يُعرض للزوار.
   const dealStats = (dealsQ?.data as any[])?.[0] ?? {
     completed_count: 0,
-    total_revenue_sar: 0,
-    in_progress_count: 0,
-    disputed_count: 0,
     last30d_completed: 0,
   };
-  const subStats = (subQ?.data as any[])?.[0];
+  const subStats = { tier: (subQ?.data as string | null) ?? null };
   const endorsements = (endorsementsQ?.data as any[])?.[0] ?? {
     vouch_count: 0,
     with_comment_count: 0,
@@ -242,16 +241,6 @@ export default async function SellerPage({
                 {Number(dealStats.last30d_completed || 0) > 0 && (
                   <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700 dark:text-emerald-300">
                     · منها {Number(dealStats.last30d_completed).toLocaleString("ar-SA")} خلال 30 يومًا
-                  </span>
-                )}
-                {Number(dealStats.total_revenue_sar || 0) > 0 && (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-emerald-700/80 dark:text-emerald-300/80">
-                    · إجمالي {Number(dealStats.total_revenue_sar).toLocaleString("ar-SA", { maximumFractionDigits: 2 })} ر.س
-                  </span>
-                )}
-                {Number(dealStats.in_progress_count || 0) > 0 && (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-sky-700 dark:text-sky-300">
-                    · و {Number(dealStats.in_progress_count).toLocaleString("ar-SA")} قيد التنفيذ الآن
                   </span>
                 )}
               </div>

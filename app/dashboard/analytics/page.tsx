@@ -53,25 +53,29 @@ export default async function SellerAnalyticsPage({
     (supabase.rpc as any)("seller_analytics_funnel", {
       p_seller_id: seller.id,
     }),
-    (supabase.rpc as any)("seller_dashboard_kpis", { p_seller_id: seller.id }),
+    (supabase.rpc as any)("seller_overall_kpis", { p_seller_id: seller.id }),
   ]);
 
   const daily = (dailyQ.data as DailyRow[]) ?? [];
   const topListings = (topListingsQ.data as any[]) ?? [];
   const topNeigh = (topNeighQ.data as any[]) ?? [];
   const funnel = (funnelQ.data as any[]) ?? [];
-  const kpis = (kpisQ.data as any[])?.[0] ?? {
-    views_last7d: 0, views_last30d: 0,
-    whatsapp_clicks_last7d: 0, whatsapp_clicks_last30d: 0,
-    chat_threads_open: 0, chats_last7d: 0,
-    offers_received_last7d: 0, offers_received_last30d: 0,
-    bids_last7d: 0, bids_last30d: 0,
-    offers_submitted_last7d: 0, offers_submitted_last30d: 0,
-    deals_pending: 0, deals_in_progress: 0, deals_completed: 0,
-    deals_last7d: 0, deals_last30d: 0,
-    revenue_7d_sar: 0, revenue_30d_sar: 0,
-    saved_search_matches_last7d: 0, saved_search_matches_last30d: 0,
-    new_offers_received_last7d: 0, new_offers_received_last30d: 0,
+  // seller_overall_kpis يرجّع صفًا لكل مؤشر (kpi, value_7d, value_30d,
+  // value_total) لا كائنًا مسطّحًا؛ نحوّله للشكل اللي تقرأه البطاقات.
+  const kpiRows = (kpisQ.data as any[]) ?? [];
+  const kpiBy = (name: string) =>
+    kpiRows.find((r) => r.kpi === name) ?? { value_7d: 0, value_30d: 0, value_total: 0 };
+
+  const kpis = {
+    views_last7d: Number(kpiBy("views").value_7d) || 0,
+    views_last30d: Number(kpiBy("views").value_30d) || 0,
+    whatsapp_clicks_last7d: Number(kpiBy("whatsapp_clicks").value_7d) || 0,
+    whatsapp_clicks_last30d: Number(kpiBy("whatsapp_clicks").value_30d) || 0,
+    offers_received_last7d: Number(kpiBy("offers_received").value_7d) || 0,
+    offers_received_last30d: Number(kpiBy("offers_received").value_30d) || 0,
+    deals_completed: Number(kpiBy("deals_completed").value_total) || 0,
+    revenue_7d_sar: Number(kpiBy("revenue_sar").value_7d) || 0,
+    revenue_30d_sar: Number(kpiBy("revenue_sar").value_30d) || 0,
   };
 
   // احسب الإحصائيات التراكمية من daily
