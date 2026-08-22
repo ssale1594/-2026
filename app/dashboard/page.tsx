@@ -3,8 +3,8 @@ import { requireSeller } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import DashboardHeader from "./dashboard-header";
 import DashboardClientStats from "./dashboard-client-stats";
-import { archiveListing } from "./listings/[id]/edit/actions";
 import ArchiveButton from "./archive-button";
+import PrintButton from "@/components/print-button";
 import { siteName } from "@/lib/seo";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -211,13 +211,9 @@ export default async function DashboardPage() {
               >
                 👀 عرض صفحتي العامة
               </Link>
-              <button
-                type="button"
-                onClick={() => window.print()}
-                className="text-sm rounded-lg bg-foreground text-background px-4 py-2 inline-flex items-center gap-2 hover:opacity-90 font-semibold"
-              >
+              <PrintButton className="text-sm rounded-lg bg-foreground text-background px-4 py-2 inline-flex items-center gap-2 hover:opacity-90 font-semibold">
                 📄 تصدير تقرير الأداء PDF
-              </button>
+              </PrintButton>
             </div>
           </div>
 
@@ -532,12 +528,7 @@ export default async function DashboardPage() {
                         تعديل
                       </Link>
                       {listing.status !== "archived" && (
-                        <ArchiveButton
-                          onArchive={async () => {
-                            "use server";
-                            await archiveListing(listing.id);
-                          }}
-                        />
+                        <ArchiveButton listingId={listing.id} />
                       )}
                     </div>
                   </li>

@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { uploadPaymentProof } from "@/lib/storage";
-import { submitPaymentProof } from "@/app/deals/payment-actions";
+import { submitPaymentProof } from "@/components/deals/payment-actions";
 
 const METHODS: { k: any; label: string; hint: string }[] = [
   { k: "bank_transfer", label: "🏦 تحويل بنكي", hint: "اسم البنك، رقم العملية، آخر 4 أرقام الحساب" },

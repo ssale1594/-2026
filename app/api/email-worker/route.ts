@@ -1,43 +1,38 @@
 import { NextResponse } from "next/server";
 import { runEmailWorkerCron } from "@/lib/email/worker";
+import { assertCronAuthorized, cronErrorResponse } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(req: Request) {
-  const authHeader = req.headers.get("Authorization") || req.headers.get("authorization");
-  const bearer = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+// Scheduled from vercel.json. Vercel Cron authenticates with
+// `Authorization: Bearer $CRON_SECRET`, which is what assertCronAuthorized
+// checks — the route used to compare against EMAIL_WORKER_TOKEN instead, so a
+// real cron call would have been rejected as unauthorized had one ever been
+// scheduled.
+//
+// ⚠️ Vercel's Hobby plan runs cron jobs once per day at most, so notification
+// emails currently go out as one daily batch. Change this entry to
+// "*/15 * * * *" in vercel.json after upgrading to Pro (which TECH.md §9
+// already flags as required at commercial launch).
+async function run(request: Request) {
+  assertCronAuthorized(request);
+  const stats = await runEmailWorkerCron();
+  return NextResponse.json({ ok: true, ranAt: new Date().toISOString(), stats });
+}
 
+export async function GET(request: Request) {
   try {
-    const stats = await runEmailWorkerCron(bearer);
-    return NextResponse.json({
-      ok: true,
-      ranAt: new Date().toISOString(),
-      stats,
-    });
-  } catch (err: any) {
-    return NextResponse.json(
-      { ok: false, error: err?.message || String(err) },
-      { status: err?.message?.includes("Unauthorized") ? 401 : 500 }
-    );
+    return await run(request);
+  } catch (err) {
+    return cronErrorResponse(err);
   }
 }
 
-export async function GET(req: Request) {
-  // Vercel Cron may call with GET too, allow with query token as fallback
-  const url = new URL(req.url);
-  const token = url.searchParams.get("token");
+export async function POST(request: Request) {
   try {
-    const stats = await runEmailWorkerCron(token);
-    return NextResponse.json({
-      ok: true,
-      ranAt: new Date().toISOString(),
-      stats,
-    });
-  } catch (err: any) {
-    return NextResponse.json(
-      { ok: false, error: err?.message || String(err) },
-      { status: err?.message?.includes("Unauthorized") ? 401 : 500 }
-    );
+    return await run(request);
+  } catch (err) {
+    return cronErrorResponse(err);
   }
 }

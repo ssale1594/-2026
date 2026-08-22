@@ -387,13 +387,11 @@ function ResultCard({ r }: { r: SearchResult }) {
           )}
 
           <div className="flex items-center justify-between gap-2 text-xs text-black/50 dark:text-white/50 pt-3 border-t border-black/[.06] dark:border-white/[.1]">
-            <Link
-              href={`/seller/${r.seller_slug}`}
-              className="truncate hover:underline font-medium"
-              onClick={(e) => e.stopPropagation()}
-            >
-              🏪 {r.business_name}
-            </Link>
+            {/* Plain text, not a nested <Link> — this card is already one big
+                <Link> to the listing, and a link inside a link is both invalid
+                HTML and (via the onClick this used to carry) broke server
+                rendering the same way ArchiveButton/PrintButton did. */}
+            <span className="truncate font-medium">🏪 {r.business_name}</span>
             <span className="shrink-0">
               👁 {r.view_count}
             </span>

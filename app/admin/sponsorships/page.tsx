@@ -68,10 +68,7 @@ export default async function AdminSponsorshipsPage() {
                   )}
                 </div>
                 <DeactivateButton
-                  onDeactivate={async () => {
-                    "use server";
-                    await deactivateSponsorship(sponsorship.id);
-                  }}
+                  onDeactivate={deactivateSponsorship.bind(null, sponsorship.id)}
                 />
               </li>
             ))}

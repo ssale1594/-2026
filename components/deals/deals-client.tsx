@@ -6,7 +6,7 @@ import {
   buyerConfirmOrDispute,
   sellerMarkComplete,
   sellerRespondToDeal,
-} from "@/app/deals/deals-actions";
+} from "@/components/deals/deals-actions";
 import PaymentProofsList from "@/components/payment-proofs-list";
 import PaymentProofUploader from "@/components/payment-proof-uploader";
 

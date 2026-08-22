@@ -62,14 +62,8 @@ export default async function AdminJobsPage() {
                   </div>
                 </div>
                 <ReviewButtons
-                  onApprove={async () => {
-                    "use server";
-                    await setJobStatus(job.id, "published");
-                  }}
-                  onReject={async () => {
-                    "use server";
-                    await setJobStatus(job.id, "rejected");
-                  }}
+                  onApprove={setJobStatus.bind(null, job.id, "published")}
+                  onReject={setJobStatus.bind(null, job.id, "rejected")}
                 />
               </li>
             ))}

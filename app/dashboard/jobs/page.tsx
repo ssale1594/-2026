@@ -83,12 +83,7 @@ export default async function DashboardJobsPage() {
                   </div>
                 </div>
                 {job.status !== "closed" && (
-                  <CloseJobButton
-                    onClose={async () => {
-                      "use server";
-                      await closeJob(job.id);
-                    }}
-                  />
+                  <CloseJobButton onClose={closeJob.bind(null, job.id)} />
                 )}
               </li>
             ))}

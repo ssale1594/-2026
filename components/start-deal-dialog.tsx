@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { buyerInitiateDeal } from "@/app/deals/deals-actions";
+import { buyerInitiateDeal } from "@/components/deals/deals-actions";
 
 export default function StartDealDialog({
   listingId,

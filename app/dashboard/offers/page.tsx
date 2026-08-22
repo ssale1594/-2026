@@ -67,12 +67,7 @@ export default async function DashboardOffersPage() {
                     {new Date(offer.ends_at).toLocaleDateString("ar")}
                   </div>
                 </div>
-                <DeleteOfferButton
-                  onDelete={async () => {
-                    "use server";
-                    await deleteOffer(offer.id);
-                  }}
-                />
+                <DeleteOfferButton onDelete={deleteOffer.bind(null, offer.id)} />
               </li>
             ))}
           </ul>

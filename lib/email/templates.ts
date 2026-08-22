@@ -160,6 +160,97 @@ export function renderInstantEmail(data: InstantEmailData): { html: string; subj
   return { html: wrapHtml(body, data), subject };
 }
 
+
+export type NewsletterEmailData = {
+  siteName: string;
+  siteUrl: string;
+  year: number;
+  unsubscribeUrl: string;
+  listings: Array<{
+    title: string;
+    slug: string;
+    price: number | null;
+    priceNegotiable: boolean;
+    categoryName: string | null;
+    sellerName: string | null;
+  }>;
+};
+
+// Standalone wrapper (not wrapHtml) because the newsletter's unsubscribe link
+// is a public token URL, not /dashboard/settings — a newsletter subscriber has
+// no account to sign into.
+export function renderNewsletterEmail(data: NewsletterEmailData): { html: string; subject: string } {
+  const items = data.listings
+    .map((l) => {
+      const meta = [
+        l.categoryName,
+        l.sellerName,
+        l.price != null
+          ? `${l.price} ر.س${l.priceNegotiable ? " (قابل للتفاوض)" : ""}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      return `
+        <div class="item">
+          <p class="item-title">${l.title}</p>
+          ${meta ? `<p class="item-body">${meta}</p>` : ""}
+          <a href="${data.siteUrl}/listing/${l.slug}" class="item-link" target="_blank">شوف الإعلان ←</a>
+        </div>
+      `;
+    })
+    .join("");
+
+  const body = `
+    <span class="badge">🆕 وش الجديد بالزلفي</span>
+    <h2 class="title">أحدث ${data.listings.length} إعلان هذا الأسبوع</h2>
+    <div class="body-text">
+      ${items || "<p>ما فيه إعلانات جديدة هالأسبوع.</p>"}
+    </div>
+    <a href="${data.siteUrl}/whats-new" class="cta" target="_blank">شوف الكل ←</a>
+  `;
+
+  const footer = `
+    <div class="footer">
+      <p><strong>${data.siteName}</strong> — دليلك لكل ما تحتاجه بالزلفي</p>
+      <p><a href="${data.siteUrl}/">الصفحة الرئيسية</a> | <a href="${data.siteUrl}/map">دليل الخريطة</a></p>
+      <p class="unsubscribe">
+        وصلتك هذي النشرة لأنك اشتركت بـ${data.siteUrl}/whats-new —
+        <a href="${data.unsubscribeUrl}">إلغاء الاشتراك</a>
+      </p>
+      <p class="unsubscribe">© ${data.year} ${data.siteName}. جميع الحقوق محفوظة.</p>
+    </div>
+  `;
+
+  const html = `
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${data.siteName}</title>
+  <style>${inlineStyles}</style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="header">
+        <h1>${data.siteName}</h1>
+        <p>نشرة الزلفي الأسبوعية</p>
+      </div>
+      <div class="content">
+        ${body}
+      </div>
+      ${footer}
+    </div>
+  </div>
+</body>
+</html>`;
+
+  return { html, subject: `🆕 وش الجديد بالزلفي هالأسبوع | ${data.siteName}` };
+}
+
 export function renderDigestEmail(data: DigestEmailData): { html: string; subject: string } {
   const greeting = data.userName
     ? `<p>مرحباً <strong>${data.userName}</strong>,</p>`

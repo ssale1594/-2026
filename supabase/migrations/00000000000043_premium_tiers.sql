@@ -2,7 +2,10 @@
 -- نظام العضويات المميزة للبائعين (Silver/Gold/Diamond)
 -- ============================================================
 
-create type if not exists seller_tier as enum ('free', 'silver', 'gold', 'diamond');
+-- CREATE TYPE has no IF NOT EXISTS in Postgres; guard it with a DO block instead.
+do $$ begin
+  create type seller_tier as enum ('free', 'silver', 'gold', 'diamond');
+exception when duplicate_object then null; end $$;
 
 do $$ begin
   alter type seller_tier owner to postgres;
@@ -65,8 +68,9 @@ create table if not exists featured_listings (
   created_at timestamptz not null default now()
 );
 
-create index if not exists featured_active_idx on featured_listings(listing_id)
-  where starts_at <= now() and expires_at > now();
+-- Can't use now() in a partial index predicate (must be IMMUTABLE); index the
+-- time columns directly instead and let queries filter with now() at read time.
+create index if not exists featured_active_idx on featured_listings(starts_at, expires_at);
 
 alter table featured_listings enable row level security;
 

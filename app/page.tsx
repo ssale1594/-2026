@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { siteName, siteUrl } from "@/lib/seo";
 import SearchBox from "@/components/search-box";
+import SiteNav from "@/components/site-nav";
 import NeighborhoodSelect from "@/components/neighborhood-select";
 import SponsorBanner from "@/components/sponsor-banner";
 import { getNeighborhoods } from "@/lib/data/neighborhoods";
@@ -185,34 +186,12 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen font-sans">
-      <header className="sticky top-0 z-40 border-b border-black/[.08] dark:border-white/[.145] bg-white/90 dark:bg-black/85 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-black/[.08] dark:border-white/[.145] bg-white/90 dark:bg-black/85 backdrop-blur relative">
         <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between gap-4">
           <Link href="/" className="text-xl font-extrabold shrink-0 inline-flex items-center gap-2">
             🏬 {siteName}
           </Link>
-          <nav className="flex flex-wrap justify-end gap-x-4 gap-y-1 text-sm text-black/65 dark:text-white/70">
-            <Link href="/search" className="hover:underline">
-              🔎 البحث المتقدم
-            </Link>
-            <Link href="/offers" className="hover:underline">
-              💸 عروض اليوم
-            </Link>
-            <Link href="/needs" className="hover:underline">
-              🙋 احتياجات الجيران
-            </Link>
-            <Link href="/polls" className="hover:underline">
-              🗳️ الاستفتاء الأسبوعي
-            </Link>
-            <Link href="/jobs" className="hover:underline">
-              💼 وظائف
-            </Link>
-            <Link href="/events" className="hover:underline">
-              🎪 فعاليات
-            </Link>
-            <Link href="/my/favorites" className="hover:underline font-semibold text-rose-600">
-              ❤️ المفضلة
-            </Link>
-          </nav>
+          <SiteNav />
         </div>
       </header>
 
@@ -285,6 +264,24 @@ export default async function Home() {
             className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 text-sm shrink-0 shadow"
           >
             ✍️ أحتاج إلى...
+          </Link>
+        </section>
+
+        <section className="mb-10 rounded-2xl border-2 border-dashed border-sky-500/30 bg-sky-500/10 dark:bg-sky-500/5 px-6 py-5 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div className="font-bold text-sky-800 dark:text-sky-200 inline-flex items-center gap-2">
+              🗺️ دليل الزلفي على الخريطة
+            </div>
+            <p className="text-sm text-sky-800/80 dark:text-sky-200/80 mt-0.5 max-w-2xl">
+              شوف المحلات والأسر المنتجة حسب الحي، واوصل لأي واحد منهم بضغطة
+              &quot;الاتجاهات&quot; أو اتصل مباشرة.
+            </p>
+          </div>
+          <Link
+            href="/map"
+            className="rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold px-5 py-2.5 text-sm shrink-0 shadow"
+          >
+            افتح الدليل ←
           </Link>
         </section>
 

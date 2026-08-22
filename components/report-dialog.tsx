@@ -1,19 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { submitReport, getReasonList } from "@/app/admin/moderation/moderation-actions";
-
-const REASONS: { code: string; label: string; desc: string }[] = [
-  { code: "spam", label: "رسائل مزعجة / سبام", desc: "محتوى مكرر أو ترويجي غير مرغوب فيه" },
-  { code: "fraud", label: "نصب أو احتيال", desc: "بيانات وهمية، طلب تحويل مبلغ، أو بائع غير أمين" },
-  { code: "inappropriate", label: "محتوى غير لائق", desc: "صور/وصف للكبار فقط أو مسيء" },
-  { code: "wrong_price", label: "تسعير غير عادل", desc: "سعر مبالغ فيه أو خداع" },
-  { code: "wrong_category", label: "تصنيف خاطئ", desc: "الإعلان في الفئة الخطأ" },
-  { code: "duplicate", label: "إعلان مكرر", desc: "نفس المنتج مرفوع أكثر من مرة" },
-  { code: "expired", label: "غير متاح / بيع", desc: "السلعة بيعت ولم يُحذف الإعلان" },
-  { code: "legal", label: "مخالفة قانونية", desc: "منتج غير مسموح ببيعه" },
-  { code: "other", label: "سبب آخر", desc: "تفاصيل في المربع أدناه" },
-];
+import { submitReport } from "@/app/admin/moderation/moderation-actions";
+import {
+  REPORT_REASONS as REASONS,
+  type ReportTargetType,
+} from "@/lib/validation/report";
 
 export default function ReportDialog({
   targetType,
@@ -21,15 +13,7 @@ export default function ReportDialog({
   label = "الإبلاغ عن محتوى",
   className = "",
 }: {
-  targetType:
-    | "listing"
-    | "seller"
-    | "review"
-    | "comment"
-    | "event"
-    | "job"
-    | "need"
-    | "offer";
+  targetType: ReportTargetType;
   targetId: number | string;
   label?: string;
   className?: string;

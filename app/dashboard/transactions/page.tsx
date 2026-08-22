@@ -57,14 +57,8 @@ export default async function SellerTransactionsPage() {
                 <ReviewButtons
                   approveLabel="أكّد"
                   rejectLabel="ما تعاملت معه"
-                  onApprove={async () => {
-                    "use server";
-                    await setTransactionStatus(transaction.id, "confirmed");
-                  }}
-                  onReject={async () => {
-                    "use server";
-                    await setTransactionStatus(transaction.id, "disputed");
-                  }}
+                  onApprove={setTransactionStatus.bind(null, transaction.id, "confirmed")}
+                  onReject={setTransactionStatus.bind(null, transaction.id, "disputed")}
                 />
               </li>
             ))}

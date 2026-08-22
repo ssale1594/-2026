@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Metadata } from "next";
-import { requireUser } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import PollVoteClient from "./poll-vote-client";
 import { siteName, siteUrl } from "@/lib/seo";
@@ -11,8 +10,13 @@ export const metadata: Metadata = {
 };
 
 export default async function PollsPage() {
-  const user = await requireUser();
   const supabase = await createClient();
+  // عام بلا حساب عمدًا (migration 54 §5-ب) — لكن requireUser() هنا كانت
+  // تفرض تسجيل الدخول لمجرد المشاهدة، فتبطل ذلك الإصلاح فعليًا. التصويت
+  // نفسه يبقى محميًا داخل castPollVote() (polls-actions.ts).
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   // active poll (current)
   const activeQ = await supabase.rpc("get_active_poll");
@@ -151,7 +155,7 @@ export default async function PollsPage() {
                   myVoteOptionId={active.my_vote_option_id ?? null}
                   options={optionsWithProfiles}
                   results={resultsWithProfiles}
-                  viewerId={user.id}
+                  viewerId={user?.id ?? null}
                 />
               )}
             </section>

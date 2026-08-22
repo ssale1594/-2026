@@ -286,10 +286,7 @@ export default async function SavedSearchesPage() {
                         شوف النتائج
                       </Link>
                       <DeleteSavedSearch
-                        onDelete={async () => {
-                          "use server";
-                          await deleteSavedSearch(search.id);
-                        }}
+                        onDelete={deleteSavedSearch.bind(null, search.id)}
                       />
                     </div>
                   </li>

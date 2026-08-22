@@ -51,5 +51,10 @@ export async function createSellerProfile(
     await supabase.rpc("claim_referral", { p_code: referralCode.trim() });
   }
 
+  // Also best-effort: closes the loop on "رشّح مشروعًا" (app/refer-a-business)
+  // by auto-marking a matching pending referral as contacted when the
+  // referred business joins on its own — see migration 59.
+  await supabase.rpc("link_referral_on_signup", { p_seller_id: user.id });
+
   redirect("/dashboard");
 }

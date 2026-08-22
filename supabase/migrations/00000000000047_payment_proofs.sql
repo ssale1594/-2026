@@ -153,7 +153,8 @@ begin
   into other_party, am_buyer
   from deals d where d.id = new.deal_id;
 
-  link_path := am_buyer ? '/dashboard/deals' : '/my/deals';
+  -- PL/pgSQL has no `? :` ternary — that's JS/C syntax, not SQL.
+  link_path := case when am_buyer then '/dashboard/deals' else '/my/deals' end;
 
   begin
     perform notify(

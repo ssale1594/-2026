@@ -2,6 +2,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import SellerContactButtons from "@/components/seller-contact-buttons";
+import VisitSourceTracker from "@/components/visit-source-tracker";
 import { pageTitle, siteName } from "@/lib/seo";
 import { getSellerBySlug } from "@/lib/data/sellers";
 import { relativeTimeAr } from "@/lib/relative-time";
@@ -41,10 +43,15 @@ export async function generateMetadata({
 
 export default async function SellerPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  // `?src=qr` is set by the printed QR poster (app/dashboard/qr) so the seller
+  // can tell whether the sticker actually brings anyone in.
+  searchParams: Promise<{ src?: string }>;
 }) {
   const { slug } = await params;
+  const { src } = await searchParams;
   const seller = await getSellerBySlug(slug);
 
   if (!seller) {
@@ -183,11 +190,9 @@ export default async function SellerPage({
           .maybeSingle()
       : { data: null };
 
-  // wa.me requires digits only (country code, no leading +/00/spaces).
-  const whatsappHref = `https://wa.me/${seller.whatsapp_number.replace(/\D/g, "")}`;
-
   return (
     <div className="min-h-screen font-sans">
+      <VisitSourceTracker sellerId={seller.id} source={src} />
       <header className="border-b border-black/[.08] dark:border-white/[.145]">
         <div className="mx-auto max-w-5xl px-4 py-5 flex items-center justify-between">
           <Link href="/" className="text-lg font-bold">
@@ -314,6 +319,17 @@ export default async function SellerPage({
                 {seller.description}
               </p>
             )}
+            {(seller.address_note || seller.latitude !== null) && (
+              <p className="text-sm text-black/60 dark:text-white/60 mt-2 flex items-center gap-1.5">
+                <span aria-hidden>📍</span>
+                {seller.address_note ?? "الموقع متاح على الخريطة"}
+                {seller.latitude !== null && (
+                  <Link href="/map" className="underline hover:no-underline">
+                    (شوفه بالدليل)
+                  </Link>
+                )}
+              </p>
+            )}
             <div className="mt-3">
               <VouchButton
                 sellerId={seller.id}
@@ -324,14 +340,14 @@ export default async function SellerPage({
             </div>
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0">
-            <a
-              href={whatsappHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-full bg-green-600 text-white text-sm font-medium px-4 py-2 hover:bg-green-700 transition-colors"
-            >
-              تواصل واتساب
-            </a>
+            <SellerContactButtons
+              sellerId={seller.id}
+              businessName={seller.business_name}
+              whatsappNumber={seller.whatsapp_number}
+              phone={seller.phone}
+              latitude={seller.latitude}
+              longitude={seller.longitude}
+            />
             {user && user.id !== seller.id && (
               <>
                 <StartChatButton

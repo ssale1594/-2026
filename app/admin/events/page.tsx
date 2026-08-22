@@ -61,14 +61,8 @@ export default async function AdminEventsPage() {
                   </div>
                 </div>
                 <ReviewButtons
-                  onApprove={async () => {
-                    "use server";
-                    await setEventStatus(event.id, "published");
-                  }}
-                  onReject={async () => {
-                    "use server";
-                    await setEventStatus(event.id, "rejected");
-                  }}
+                  onApprove={setEventStatus.bind(null, event.id, "published")}
+                  onReject={setEventStatus.bind(null, event.id, "rejected")}
                 />
               </li>
             ))}

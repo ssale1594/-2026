@@ -50,7 +50,11 @@ export default function PollVoteClient({
   myVoteOptionId: number | null;
   options: Option[];
   results: ResultRow[];
-  viewerId: string;
+  // Not read inside this component — castPollVote() resolves the voter from
+  // the session server-side. Kept as an explicit null-friendly prop rather
+  // than dropped, in case a future UI variant (e.g. showing "صوّتّ كـ...")
+  // needs it.
+  viewerId: string | null;
 }) {
   const [selected, setSelected] = useState<number | null>(myVoteOptionId);
   const [hasVoted, setHasVoted] = useState<boolean>(myVoteOptionId != null);

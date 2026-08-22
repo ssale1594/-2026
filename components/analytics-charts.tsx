@@ -90,13 +90,16 @@ export function LineChart({
     return h - padY - ((h - 2 * padY) * (v - min)) / (max - min || 1);
   }
 
+  // An empty series left `path` as "", which made `area` start with the
+  // appended "L ..." instead of a leading "M" — an invalid SVG path command
+  // Chrome rejects outright ("Expected moveto path command").
   const path = series
     .map((s, i) => `${i === 0 ? "M" : "L"} ${x(i).toFixed(1)} ${y(s.value).toFixed(1)}`)
     .join(" ");
 
-  const area =
-    path +
-    ` L ${x(n - 1).toFixed(1)} ${h - padY} L ${x(0).toFixed(1)} ${h - padY} Z`;
+  const area = series.length === 0
+    ? ""
+    : path + ` L ${x(n - 1).toFixed(1)} ${h - padY} L ${x(0).toFixed(1)} ${h - padY} Z`;
 
   // المحور الأفقي: نقاط الشبكة كل ~6 أيام
   const gridLines: number[] = [];

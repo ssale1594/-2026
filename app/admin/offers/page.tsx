@@ -56,14 +56,8 @@ export default async function AdminOffersPage() {
                   </div>
                 </div>
                 <ReviewButtons
-                  onApprove={async () => {
-                    "use server";
-                    await setOfferStatus(offer.id, "published");
-                  }}
-                  onReject={async () => {
-                    "use server";
-                    await setOfferStatus(offer.id, "rejected");
-                  }}
+                  onApprove={setOfferStatus.bind(null, offer.id, "published")}
+                  onReject={setOfferStatus.bind(null, offer.id, "rejected")}
                 />
               </li>
             ))}
