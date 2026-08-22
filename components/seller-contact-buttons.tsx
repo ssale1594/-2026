@@ -1,6 +1,11 @@
 "use client";
 
 import { siteName } from "@/lib/seo";
+// directionsHref lives in the plain lib/geo module, not here — a Server
+// Component (app/map/page.tsx) needs to call it too, and every export of a
+// "use client" file is treated as a client reference by Next's RSC bundler,
+// even a pure function. See lib/geo.ts's comment on directionsHref.
+import { directionsHref } from "@/lib/geo";
 
 export type ContactChannel = "whatsapp" | "phone" | "directions";
 
@@ -13,16 +18,6 @@ function track(sellerId: string, channel: ContactChannel) {
     body: JSON.stringify({ sellerId, channel }),
     keepalive: true,
   }).catch(() => {});
-}
-
-export function directionsHref(
-  latitude: number | null,
-  longitude: number | null
-): string | null {
-  if (latitude === null || longitude === null) return null;
-  // The universal Google Maps directions URL — works in the app on both phone
-  // platforms and falls back to the web without needing an API key.
-  return `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
 }
 
 export default function SellerContactButtons({

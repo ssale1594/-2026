@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { pageTitle, siteName } from "@/lib/seo";
-import SellerContactButtons, {
-  directionsHref,
-} from "@/components/seller-contact-buttons";
+import SellerContactButtons from "@/components/seller-contact-buttons";
+import { directionsHref } from "@/lib/geo";
 import SiteNav from "@/components/site-nav";
 import ClaimButton from "./claim-button";
 

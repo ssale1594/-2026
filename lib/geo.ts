@@ -67,3 +67,21 @@ export function looksOutsideZulfi({ latitude, longitude }: Coordinates): boolean
 export function swapped({ latitude, longitude }: Coordinates): Coordinates {
   return { latitude: longitude, longitude: latitude };
 }
+
+// The universal Google Maps directions URL — works in the app on both phone
+// platforms and falls back to the web without needing an API key.
+//
+// Lives in this plain module rather than components/seller-contact-buttons.tsx
+// (a "use client" file) because app/map/page.tsx is a Server Component: Next's
+// RSC bundler treats every export of a "use client" module as a client
+// reference, even a pure non-React function, so calling it directly from a
+// Server Component throws at render time. This only surfaced once real seller
+// rows with coordinates existed — with empty data the map/[slug] grids
+// short-circuited before ever calling it.
+export function directionsHref(
+  latitude: number | null,
+  longitude: number | null
+): string | null {
+  if (latitude === null || longitude === null) return null;
+  return `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+}
