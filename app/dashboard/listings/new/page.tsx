@@ -3,6 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getNeighborhoods } from "@/lib/data/neighborhoods";
 import DashboardHeader from "../../dashboard-header";
 import NewListingForm from "./new-listing-form";
+import {
+  isListingWriterEnabled,
+  listingWriterDisabledReason,
+} from "@/lib/ai/config";
 
 export default async function NewListingPage() {
   await requireSeller();
@@ -26,7 +30,12 @@ export default async function NewListingPage() {
         <p className="text-sm text-black/60 dark:text-white/60 mb-6">
           الإعلان يروح للمراجعة قبل ما يظهر للزوار.
         </p>
-        <NewListingForm categories={categories ?? []} neighborhoods={neighborhoods} />
+        <NewListingForm
+          categories={categories ?? []}
+          neighborhoods={neighborhoods}
+          aiEnabled={isListingWriterEnabled()}
+          aiDisabledReason={listingWriterDisabledReason()}
+        />
       </main>
     </div>
   );

@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { createListing, type ListingFormState } from "./actions";
+import AiDraftPanel, { type DraftFill } from "./ai-draft-panel";
 
 const initialState: ListingFormState = {};
 
@@ -11,25 +12,62 @@ const fieldClass =
 export default function NewListingForm({
   categories,
   neighborhoods,
+  aiEnabled = false,
+  aiDisabledReason = null,
 }: {
   categories: { id: number; name_ar: string }[];
   neighborhoods: { id: number; name_ar: string }[];
+  aiEnabled?: boolean;
+  aiDisabledReason?: string | null;
 }) {
   const [state, formAction, isPending] = useActionState(
     createListing,
     initialState
   );
 
+  // الحقول محكومة ليقدر المساعد يملأها؛ القيم تبقى قابلة للتعديل
+  // يدويًا بالكامل بعد التعبئة.
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [categoryId, setCategoryId] = useState("");
+  const [priceHint, setPriceHint] = useState<string | null>(null);
+
+  function applyDraft(fill: DraftFill) {
+    setTitle(fill.title);
+    setDescription(fill.description);
+    setCategoryId(String(fill.categoryId));
+    setPriceHint(fill.priceNote || null);
+  }
+
   return (
     <form action={formAction} className="flex flex-col gap-4">
+      <AiDraftPanel
+        enabled={aiEnabled}
+        disabledReason={aiDisabledReason}
+        onFill={applyDraft}
+      />
+
       <label className="flex flex-col gap-1">
         <span className="text-sm">عنوان الإعلان</span>
-        <input name="title" required maxLength={120} className={fieldClass} />
+        <input
+          name="title"
+          required
+          maxLength={120}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          className={fieldClass}
+        />
       </label>
 
       <label className="flex flex-col gap-1">
         <span className="text-sm">الفئة</span>
-        <select name="categoryId" required className={fieldClass}>
+        <select
+          name="categoryId"
+          required
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+          className={fieldClass}
+        >
           <option value="">اختر الفئة</option>
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
@@ -57,12 +95,19 @@ export default function NewListingForm({
           name="description"
           rows={5}
           maxLength={2000}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
           className={fieldClass}
         />
       </label>
 
       <label className="flex flex-col gap-1">
         <span className="text-sm">السعر (ر.س) — اختياري</span>
+        {priceHint && (
+          <span className="text-[11px] text-sky-700 dark:text-sky-300">
+            {priceHint}
+          </span>
+        )}
         <input
           name="price"
           type="number"
