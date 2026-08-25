@@ -9,6 +9,8 @@ import { getNeighborhoods } from "@/lib/data/neighborhoods";
 import { getJourneys } from "@/lib/data/journeys";
 import { getSponsorship } from "@/lib/data/sponsorships";
 import ListingCard from "@/components/listing-card";
+import { LinkButton } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -197,7 +199,10 @@ export default async function Home() {
 
       <main className="mx-auto max-w-6xl px-4 py-8">
         {/* HERO */}
-        <section className="mb-8 rounded-3xl bg-gradient-to-br from-sky-600 via-indigo-600 to-violet-700 text-white p-6 md:p-10 shadow-2xl overflow-hidden relative">
+        {/* تدرّج ثابت لا يتبع --brand-* الوضعية: خلفية الهيرو تبقى داكنة
+            بنفس الدرجة بالوضعين، لأن النص أبيض دايمًا فوقها — عكس نص
+            العلامة اللي يفتح بالوضع الداكن ليبقى مقروءًا على خلفية داكنة. */}
+        <section className="mb-8 rounded-3xl bg-gradient-to-br from-emerald-700 via-emerald-600 to-emerald-900 text-white p-6 md:p-10 shadow-2xl overflow-hidden relative">
           <div className="absolute -top-20 -left-20 w-72 h-72 rounded-full bg-white/10 blur-3xl" />
           <div className="absolute -bottom-24 -right-16 w-80 h-80 rounded-full bg-white/10 blur-3xl" />
           <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-6 items-center">
@@ -218,7 +223,7 @@ export default async function Home() {
               <div className="flex flex-wrap items-center gap-3">
                 <Link
                   href="/needs/new"
-                  className="rounded-xl bg-white text-indigo-700 font-bold px-5 py-2.5 text-sm shadow hover:shadow-lg transition"
+                  className="rounded-xl bg-white text-emerald-700 font-bold px-5 py-2.5 text-sm shadow hover:shadow-lg transition"
                 >
                   🙋 أنشر احتياجك مجانًا
                 </Link>
@@ -250,39 +255,36 @@ export default async function Home() {
         <SponsorBanner sponsorship={sponsorship} />
 
         {/* NEEDS CTA */}
-        <section className="mb-10 rounded-2xl border-2 border-dashed border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-500/5 px-6 py-5 flex flex-wrap items-center justify-between gap-4">
+        <section className="mb-10 rounded-[--radius-card] border-2 border-dashed border-brand-500/30 bg-brand-50 dark:bg-brand-50 px-6 py-5 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <div className="font-bold text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-2">
+            <div className="font-bold text-brand-700 inline-flex items-center gap-2">
               💡 ما لقيت اللي تبيه؟ أنشر طلبك كـ"احتياج" وخلّ البائعين يأتون لك!
             </div>
-            <p className="text-sm text-emerald-800/80 dark:text-emerald-200/80 mt-0.5 max-w-2xl">
+            <p className="text-sm text-brand-700/80 mt-0.5 max-w-2xl">
               مثال: "أحتاج شاحنة نقل أثاث من حي القديمة إلى الروضة — ميزانية 350 ر.س" الباعة المناسبين يتواصلون معك مباشرة.
             </p>
           </div>
-          <Link
-            href="/needs/new"
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-5 py-2.5 text-sm shrink-0 shadow"
-          >
+          <LinkButton href="/needs/new" variant="primary" size="lg" className="shrink-0">
             ✍️ أحتاج إلى...
-          </Link>
+          </LinkButton>
         </section>
 
-        <section className="mb-10 rounded-2xl border-2 border-dashed border-sky-500/30 bg-sky-500/10 dark:bg-sky-500/5 px-6 py-5 flex flex-wrap items-center justify-between gap-4">
+        {/* بطاقة محايدة لا أسرة لون منافسة: الأخضر محجوز للعلامة، والدلالية
+            (نجاح/تحذير/خطر/معلومة) لها معنى ثابت — قسم تعريفي عادي مثل هذا
+            لا يحتاج لونه الخاص، فقط تمييزًا بصريًا هادئًا عن محتوى الصفحة. */}
+        <section className="mb-10 rounded-[--radius-card] border border-black/[.08] dark:border-white/[.145] bg-surface-muted px-6 py-5 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <div className="font-bold text-sky-800 dark:text-sky-200 inline-flex items-center gap-2">
+            <div className="font-bold inline-flex items-center gap-2">
               🗺️ دليل الزلفي على الخريطة
             </div>
-            <p className="text-sm text-sky-800/80 dark:text-sky-200/80 mt-0.5 max-w-2xl">
+            <p className="text-sm text-black/60 dark:text-white/60 mt-0.5 max-w-2xl">
               شوف المحلات والأسر المنتجة حسب الحي، واوصل لأي واحد منهم بضغطة
               &quot;الاتجاهات&quot; أو اتصل مباشرة.
             </p>
           </div>
-          <Link
-            href="/map"
-            className="rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold px-5 py-2.5 text-sm shrink-0 shadow"
-          >
+          <LinkButton href="/map" variant="primary" size="lg" className="shrink-0">
             افتح الدليل ←
-          </Link>
+          </LinkButton>
         </section>
 
         {/* CATEGORIES */}
@@ -346,7 +348,7 @@ export default async function Home() {
                   </div>
                   <div className="mt-2 h-1.5 rounded-full bg-black/[.06] dark:bg-white/[.08] overflow-hidden">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-sky-500 to-indigo-500"
+                      className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-700"
                       style={{
                         width: `${Math.min(100, Math.max(8, ((n.recent_views || 0) / Math.max(1, neighActivity?.[0]?.recent_views || 1)) * 100))}%`,
                       }}
@@ -370,9 +372,12 @@ export default async function Home() {
               {(dailyOffersRaw as any[]).slice(0, 4).map((l) => (
                 <div key={l.id} className="relative">
                   {l.discount_percent ? (
-                    <span className="absolute -top-2 right-2 z-20 text-[11px] rounded-full bg-rose-600 text-white px-2.5 py-0.5 font-bold shadow">
+                    <Badge
+                      tone="danger"
+                      className="absolute -top-2 right-2 z-20 shadow font-bold"
+                    >
                       خصم {l.discount_percent}%
-                    </span>
+                    </Badge>
                   ) : null}
                   <ListingCard listing={l} />
                 </div>
@@ -449,7 +454,7 @@ export default async function Home() {
                 <li key={journey.id}>
                   <Link
                     href={`/journey/${journey.slug}`}
-                    className="block rounded-2xl border border-black/[.08] dark:border-white/[.145] p-5 text-center hover:shadow-md hover:-translate-y-0.5 transition bg-gradient-to-br from-amber-500/5 to-rose-500/5"
+                    className="block rounded-2xl border border-black/[.08] dark:border-white/[.145] p-5 text-center hover:shadow-md hover:-translate-y-0.5 transition bg-warning-50"
                   >
                     <div className="text-4xl mb-1.5" aria-hidden>
                       {journey.icon_emoji || "🎊"}

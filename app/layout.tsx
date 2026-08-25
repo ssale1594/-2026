@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Sans_Arabic, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { siteName } from "@/lib/seo";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+// الموقع كله عربي (lang="ar" dir="rtl")، فخط اللاتيني وحده (Geist) كان
+// يترك كل نص عربي يُعرض بخط النظام الاحتياطي بلا أي أثر فعلي. IBM Plex
+// Sans Arabic يغطي العربي واللاتيني بنفس العائلة، فلا يتكسر تناسق الأرقام
+// والحروف الإنجليزية داخل النص العربي.
+const bodyFont = IBM_Plex_Sans_Arabic({
+  variable: "--font-body",
+  subsets: ["arabic", "latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -26,7 +31,7 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${bodyFont.variable} ${geistMono.variable} antialiased`}
       >
         {children}
       </body>
