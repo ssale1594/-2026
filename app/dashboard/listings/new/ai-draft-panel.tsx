@@ -104,7 +104,7 @@ export default function AiDraftPanel({
           type="button"
           onClick={run}
           disabled={pending || raw.trim().length < 10}
-          className="rounded-lg bg-foreground text-background text-xs font-medium px-4 py-2 disabled:opacity-50"
+          className="rounded-lg bg-brand-600 text-white text-xs font-medium px-4 py-2 disabled:opacity-50"
         >
           {pending ? "جارٍ التجهيز…" : "جهّز المسودة"}
         </button>

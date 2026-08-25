@@ -277,7 +277,7 @@ export default function AdminPollsClient({
             className={[
               "rounded-xl px-5 py-2.5 text-sm font-bold transition",
               !tr && newSellers.length >= 2
-                ? "bg-foreground text-background hover:opacity-90"
+                ? "bg-brand-600 text-white hover:opacity-90"
                 : "bg-black/5 dark:bg-white/10 text-black/40 dark:text-white/40 cursor-not-allowed",
             ].join(" ")}
             onClick={createPoll}

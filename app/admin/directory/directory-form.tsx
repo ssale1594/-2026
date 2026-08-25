@@ -112,7 +112,7 @@ export default function DirectoryForm({
       <button
         type="submit"
         disabled={pending}
-        className="rounded-lg bg-foreground text-background text-sm font-medium px-5 py-2.5 disabled:opacity-50"
+        className="rounded-lg bg-brand-600 text-white text-sm font-medium px-5 py-2.5 disabled:opacity-50"
       >
         {pending ? "جاري الحفظ..." : "إضافة للدليل"}
       </button>

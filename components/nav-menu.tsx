@@ -57,7 +57,7 @@ export default function NavMenu({
       >
         {link.label}
         {typeof link.badge === "number" && link.badge > 0 && (
-          <span className="mr-1 rounded-full bg-foreground text-background text-xs px-1.5 py-0.5">
+          <span className="mr-1 rounded-full bg-brand-600 text-white text-xs px-1.5 py-0.5">
             {link.badge}
           </span>
         )}

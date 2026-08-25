@@ -61,7 +61,7 @@ export default async function QrPosterPage() {
               ? `وصلك ${qrVisits} زائر من الملصق آخر 90 يوم.`
               : "ما وصل أحد من الملصق بعد — اطبعه وعلّقه بمكان واضح."}
           </p>
-          <PrintButton className="rounded-lg bg-foreground text-background text-sm font-medium px-5 py-2.5">
+          <PrintButton className="rounded-lg bg-brand-600 text-white text-sm font-medium px-5 py-2.5">
             🖨️ اطبع الملصق
           </PrintButton>
         </div>

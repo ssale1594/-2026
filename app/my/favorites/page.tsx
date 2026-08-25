@@ -80,7 +80,7 @@ export default async function FavoritesPage() {
           </div>
           <Link
             href="/search"
-            className="text-sm rounded-lg bg-foreground text-background px-4 py-2 font-semibold hover:opacity-90"
+            className="text-sm rounded-lg bg-brand-600 text-white px-4 py-2 font-semibold hover:opacity-90"
           >
             ➕ تصفح المزيد من الإعلانات
           </Link>

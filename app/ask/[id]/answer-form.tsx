@@ -68,7 +68,7 @@ export default function AnswerForm({
       <button
         type="submit"
         disabled={isPending}
-        className="rounded-lg bg-foreground text-background text-sm font-medium px-4 py-2 self-start disabled:opacity-50"
+        className="rounded-lg bg-brand-600 text-white text-sm font-medium px-4 py-2 self-start disabled:opacity-50"
       >
         {isPending ? "جارٍ النشر..." : "انشر ردي"}
       </button>

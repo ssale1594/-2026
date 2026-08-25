@@ -90,7 +90,7 @@ export default async function MyBookingsPage({
               </p>
               <Link
                 href="/search"
-                className="rounded-lg bg-foreground text-background text-sm font-medium px-4 py-2 inline-block"
+                className="rounded-lg bg-brand-600 text-white text-sm font-medium px-4 py-2 inline-block"
               >
                 تصفّح الباعة
               </Link>

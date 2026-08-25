@@ -147,7 +147,7 @@ export default function DealFeedbackForm({
           type="button"
           onClick={submit}
           disabled={pending}
-          className="rounded-lg bg-foreground text-background text-xs font-medium px-4 py-2 disabled:opacity-50"
+          className="rounded-lg bg-brand-600 text-white text-xs font-medium px-4 py-2 disabled:opacity-50"
         >
           {pending ? "جارٍ الإرسال…" : "أرسل التقييم"}
         </button>

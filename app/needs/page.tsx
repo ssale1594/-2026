@@ -43,7 +43,7 @@ export default async function NeedsPage() {
           </Link>
           <Link
             href="/needs/new"
-            className="rounded-lg bg-foreground text-background text-sm font-medium px-3 py-1.5"
+            className="rounded-lg bg-brand-600 text-white text-sm font-medium px-3 py-1.5"
           >
             انشر طلبك
           </Link>

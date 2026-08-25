@@ -41,7 +41,7 @@ export default async function AskIndexPage() {
           </Link>
           <Link
             href={user ? "/ask/new" : "/login"}
-            className="rounded-lg bg-foreground text-background text-sm font-medium px-3 py-1.5"
+            className="rounded-lg bg-brand-600 text-white text-sm font-medium px-3 py-1.5"
           >
             اسأل
           </Link>
