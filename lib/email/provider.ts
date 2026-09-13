@@ -15,7 +15,7 @@ export type EmailPayload = {
 };
 
 const DEFAULT_FROM_EMAIL = process.env.EMAIL_FROM || "notifications@zulfi-local.example";
-const DEFAULT_FROM_NAME = process.env.EMAIL_FROM_NAME || "منصة سوق الزلفي";
+const DEFAULT_FROM_NAME = process.env.EMAIL_FROM_NAME || "منصة سوق الديرة";
 
 function fallbackError(method: string): EmailSendResult {
   return {

@@ -7,7 +7,7 @@ import { siteName } from "@/lib/seo";
 
 export const metadata = {
   title: "قائمة المفضلة — " + siteName,
-  description: "كل ما حفظته من إعلانات في سوق الزلفي في مكان واحد.",
+  description: "كل ما حفظته من إعلانات في سوق الديرة في مكان واحد.",
 };
 
 export default async function FavoritesPage() {

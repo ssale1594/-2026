@@ -122,7 +122,7 @@ export default async function SellerAnalyticsPage({
     <div className="max-w-7xl mx-auto">
       <DashboardHeader
         title="📊 لوحة الإحصائيات للبائع"
-        subtitle={`أداؤك خلال آخر ${periodText} في سوق الزلفي — مشاهدات، تفاعل، صفقات، وأهم المناطق`}
+        subtitle={`أداؤك خلال آخر ${periodText} في سوق الديرة — مشاهدات، تفاعل، صفقات، وأهم المناطق`}
         breadcrumb={[
           { label: "الرئيسية", href: "/" },
           { label: "لوحة البائع", href: "/dashboard" },

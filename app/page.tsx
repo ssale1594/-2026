@@ -14,7 +14,7 @@ import { Metadata } from "next";
 export const metadata: Metadata = {
   title: `${siteName} — دليل محلات الخدمات والمنتجات في الزلفي`,
   description:
-    "سوق الزلفي المحلي — تصفح الإعلانات، أطلب خدمات من جيرانك، أو أضف متجرك مجانًا. الأسعار المعروضة من الباعة مباشرة.",
+    "سوق الديرة المحلي — تصفح الإعلانات، أطلب خدمات من جيرانك، أو أضف متجرك مجانًا. الأسعار المعروضة من الباعة مباشرة.",
   metadataBase: new URL(siteUrl),
 };
 
@@ -203,7 +203,7 @@ export default async function Home() {
           <div className="relative grid grid-cols-1 lg:grid-cols-5 gap-6 items-center">
             <div className="lg:col-span-3">
               <div className="text-[11px] opacity-90 mb-3 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 border border-white/20">
-                ✨ سوق الزلفي المحلي · مدعوم من جيرانك
+                ✨ سوق الديرة المحلي · مدعوم من جيرانك
               </div>
               <h1 className="text-3xl md:text-5xl font-extrabold mb-3 leading-tight">
                 كل اللي تحتاجه في الزلفي،
@@ -482,7 +482,7 @@ export default async function Home() {
               رشّح مشروعًا
             </Link>
           </nav>
-          <span className="opacity-75">© {new Date().getFullYear()} {siteName} — سوق الزلفي المحلي 🇸🇦</span>
+          <span className="opacity-75">© {new Date().getFullYear()} {siteName} — سوق الديرة المحلي 🇸🇦</span>
         </div>
       </footer>
     </div>

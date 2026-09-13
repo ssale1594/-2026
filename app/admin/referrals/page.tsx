@@ -35,7 +35,7 @@ export default async function AdminReferralsPage() {
                   {referral.business_whatsapp && (
                     <a
                       href={`https://wa.me/${referral.business_whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
-                        `مرحبًا، معك فريق سوق الزلفي. أحد الأعضاء رشّح "${referral.business_name}" للانضمام لمنصتنا — يسعدنا لو تنضمّون وتعرضون منتجاتكم للزلفي كلها.`
+                        `مرحبًا، معك فريق سوق الديرة. أحد الأعضاء رشّح "${referral.business_name}" للانضمام لمنصتنا — يسعدنا لو تنضمّون وتعرضون منتجاتكم للزلفي كلها.`
                       )}`}
                       target="_blank"
                       rel="noopener noreferrer"

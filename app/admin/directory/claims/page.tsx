@@ -57,7 +57,7 @@ export default async function DirectoryClaimsPage() {
                   </div>
                   <a
                     href={`https://wa.me/${claim.claimant_whatsapp.replace(/\D/g, "")}?text=${encodeURIComponent(
-                      "مرحبًا، معك فريق سوق الزلفي بخصوص طلبك تبنّي محلك بالدليل العام."
+                      "مرحبًا، معك فريق سوق الديرة بخصوص طلبك تبنّي محلك بالدليل العام."
                     )}`}
                     target="_blank"
                     rel="noopener noreferrer"

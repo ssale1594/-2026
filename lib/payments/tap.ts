@@ -46,7 +46,7 @@ export async function createCharge(
       customer_initiated: true,
       threeDSecure: true,
       save_card: true,
-      description: "اشتراك شهري — سوق الزلفي",
+      description: "اشتراك شهري — سوق الديرة",
       customer: {
         first_name: params.sellerName,
         email: params.sellerEmail,

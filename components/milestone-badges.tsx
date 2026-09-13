@@ -158,7 +158,7 @@ export function computeMilestones(d: MilestoneInput): MilestoneBadge[] {
     {
       slug: "newcomer",
       title: "🆕 بائع جديد",
-      description: "انضم خلال الأسبوع الأخير — أهلاً بك في سوق الزلفي!",
+      description: "انضم خلال الأسبوع الأخير — أهلاً بك في سوق الديرة!",
       icon: "🆕",
       unlocked: isNewSeller,
       progress: isNewSeller ? 1 : 0,
