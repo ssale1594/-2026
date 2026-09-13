@@ -1,28 +1,147 @@
 @import "tailwindcss";
 
+/* ============================================================
+   نظام التصميم — الألوان والزوايا
+   ============================================================
+   قبل هذا الملف: كل صفحة تختار ألوانها بنفسها (sky/emerald/amber/rose/
+   fuchsia تتنافس بلا معنى ثابت) وزوايا حوافها (rounded-lg إلى rounded-2xl)
+   بلا تدرّج. هذا الملف هو مصدر الحقيقة الوحيد لمكوّنات components/ui/
+   الجديدة والصفحات المعاد تصميمها — لا يعيد كتابة كل صفحة قائمة دفعة
+   واحدة، فالانتقال تدريجي مع كل صفحة تُلمس بعدها.
+
+   اللون الأساسي أخضر (emerald) عمدًا: كان الأكثر استخدامًا أصلاً بالمشروع
+   (يناسب "سوق محلي" وهوية الزلفي)، فهذا تثبيت لما استقر فعليًا لا تغيير
+   جذري يكسر الإلفة البصرية.
+
+   تنبيه مهم: --brand-* أدناه تنعكس بالوضع الداكن (700 يفتح ليبقى نص
+   العلامة مقروءًا فوق خلفية داكنة) — هذا صحيح لنص وحدود وخلفيات فاتحة
+   تتبع السطح المحيط بها. لكنه خطأ لخلفية زخرفية ثابتة يُفترض أن تبقى
+   داكنة بنفس الدرجة بالوضعين (كتدرّج بطاقة الهيرو، حيث النص أبيض دايمًا
+   فوقها بغض النظر عن الوضع) — هناك استخدم درجات Tailwind الخام الثابتة
+   (emerald-700/800/900) بدل var(--brand-*).
+   ============================================================ */
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* العلامة — استخدمها لأي عنصر تفاعلي رئيسي (أزرار، روابط بارزة،
+     الحالة المحدَّدة). لا تستخدمها لحالات النجاح/الخطأ. */
+  --brand-50: #ecfdf5;
+  --brand-100: #d1fae5;
+  --brand-300: #6ee7b7;
+  --brand-500: #10b981;
+  --brand-600: #059669;
+  --brand-700: #047857;
+  --brand-900: #064e3b;
+
+  /* دلالية — معنى ثابت بكل الصفحات: لا "أخضر" يعني سعرًا هنا ونجاحًا هناك. */
+  --success-50: #ecfdf5;
+  --success-600: #059669;
+  --success-700: #047857;
+
+  --warning-50: #fffbeb;
+  --warning-600: #d97706;
+  --warning-700: #b45309;
+
+  --danger-50: #fef2f2;
+  --danger-600: #dc2626;
+  --danger-700: #b91c1c;
+
+  --info-50: #f0f9ff;
+  --info-600: #0284c7;
+  --info-700: #0369a1;
+
+  /* سطوح ونصوص محايدة — بدل black/[.08] وwhite/[.145] المتفرقة. */
+  --surface: #ffffff;
+  --surface-muted: #f8fafc;
+  --border-subtle: rgb(0 0 0 / 0.08);
+  --text-muted: rgb(0 0 0 / 0.6);
+
+  /* زوايا — ثلاث درجات فقط، كل واحدة لدور واحد. */
+  --radius-control: 0.5rem;  /* حقول وأزرار صغيرة — يوازي rounded-lg */
+  --radius-card: 1rem;       /* بطاقات وحاويات — يوازي rounded-2xl */
+  --radius-pill: 9999px;     /* شارات وأزرار كبسولية */
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-body);
   --font-mono: var(--font-geist-mono);
+
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-300: var(--brand-300);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-900: var(--brand-900);
+
+  --color-success-50: var(--success-50);
+  --color-success-600: var(--success-600);
+  --color-success-700: var(--success-700);
+  --color-warning-50: var(--warning-50);
+  --color-warning-600: var(--warning-600);
+  --color-warning-700: var(--warning-700);
+  --color-danger-50: var(--danger-50);
+  --color-danger-600: var(--danger-600);
+  --color-danger-700: var(--danger-700);
+  --color-info-50: var(--info-50);
+  --color-info-600: var(--info-600);
+  --color-info-700: var(--info-700);
+
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+
+  --radius-control: var(--radius-control);
+  --radius-card: var(--radius-card);
+  --radius-pill: var(--radius-pill);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    --surface: #111827;
+    --border-subtle: rgb(255 255 255 / 0.145);
+    --text-muted: rgb(255 255 255 / 0.6);
+
+    /* الخلفيات الخفيفة ("-50") بالوضع الداكن تشفافية على الأسود لا ألوان
+       صلبة — نفس منطق bg-white/[.06] المستخدم بباقي المكوّنات. لون صلب
+       (مثل #451a03 الذي كان هنا) يطلع كتلة برتقالية-بنية صادمة، لا تلوينًا
+       خفيفًا متجانسًا مع خلفية الصفحة الداكنة. اكتُشف هذا بلقطة فعلية
+       للوضع الداكن، لا افتراضًا. */
+    --surface-muted: rgb(255 255 255 / 0.04);
+
+    --brand-50: rgb(16 185 129 / 0.14);
+    --brand-100: #064e3b;
+    --brand-300: #10b981;
+    --brand-500: #34d399;
+    --brand-600: #6ee7b7;
+    --brand-700: #a7f3d0;
+    --brand-900: #ecfdf5;
+
+    --success-50: rgb(16 185 129 / 0.14);
+    --success-600: #34d399;
+    --success-700: #6ee7b7;
+    --warning-50: rgb(217 119 6 / 0.14);
+    --warning-600: #fbbf24;
+    --warning-700: #fcd34d;
+    --danger-50: rgb(220 38 38 / 0.14);
+    --danger-600: #f87171;
+    --danger-700: #fca5a5;
+    --info-50: rgb(2 132 199 / 0.14);
+    --info-600: #38bdf8;
+    --info-700: #7dd3fc;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-body), Tahoma, Arial, sans-serif;
 }
 
 /* Print layout for the seller dashboard: drop the chrome so a printed copy is

@@ -83,7 +83,7 @@ export default async function AmbassadorsPage() {
             <p className="mb-3">سجّل دخولك أول عشان تقدر تقدّم كسفير.</p>
             <Link
               href="/login"
-              className="inline-block rounded-lg bg-foreground text-background text-sm font-medium px-4 py-2"
+              className="inline-block rounded-lg bg-brand-600 text-white text-sm font-medium px-4 py-2"
             >
               تسجيل الدخول
             </Link>

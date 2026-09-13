@@ -211,7 +211,7 @@ export default async function DashboardPage() {
               >
                 👀 عرض صفحتي العامة
               </Link>
-              <PrintButton className="text-sm rounded-lg bg-foreground text-background px-4 py-2 inline-flex items-center gap-2 hover:opacity-90 font-semibold">
+              <PrintButton className="text-sm rounded-lg bg-brand-600 text-white px-4 py-2 inline-flex items-center gap-2 hover:opacity-90 font-semibold">
                 📄 تصدير تقرير الأداء PDF
               </PrintButton>
             </div>
@@ -474,7 +474,7 @@ export default async function DashboardPage() {
               ) : (
                 <Link
                   href="/dashboard/listings/new"
-                  className="rounded-lg bg-foreground text-background text-sm font-medium px-4 py-2"
+                  className="rounded-lg bg-brand-600 text-white text-sm font-medium px-4 py-2"
                 >
                   إضافة إعلان
                 </Link>

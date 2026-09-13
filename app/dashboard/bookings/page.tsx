@@ -5,6 +5,7 @@ import { pageTitle } from "@/lib/seo";
 import DashboardHeader from "@/app/dashboard/dashboard-header";
 import BookingActions from "./booking-actions-client";
 import { BOOKING_STATUS, bookingWhen, isUpcoming } from "@/lib/bookings";
+import { Badge } from "@/components/ui/badge";
 
 export const metadata = { title: pageTitle("حجوزاتي") };
 
@@ -123,7 +124,7 @@ function Section({
           {rows.map((r) => {
             const st = BOOKING_STATUS[r.status] ?? {
               label: r.status,
-              cls: "border-black/20",
+              tone: "neutral" as const,
             };
             return (
               <li
@@ -144,11 +145,9 @@ function Section({
                       )}
                     </div>
                   </div>
-                  <span
-                    className={`shrink-0 text-xs rounded-full border px-2.5 py-1 ${st.cls}`}
-                  >
+                  <Badge tone={st.tone} className="shrink-0">
                     {st.label}
-                  </span>
+                  </Badge>
                 </div>
 
                 <div className="text-sm space-y-1 mb-3">

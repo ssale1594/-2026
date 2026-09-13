@@ -88,7 +88,7 @@ export default function EmailAdminActions() {
           <button
             onClick={doTest}
             disabled={isTesting || !testEmail}
-            className="inline-flex items-center gap-2 rounded-lg bg-foreground text-background px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 text-white px-4 py-2 text-sm font-semibold disabled:opacity-50"
           >
             {isTesting ? "جاري الإرسال..." : "📨 ارسل اختبار"}
           </button>

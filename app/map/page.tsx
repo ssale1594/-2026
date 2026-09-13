@@ -159,7 +159,7 @@ export default async function MapDirectoryPage({
               href="/map"
               className={`rounded-full px-3 py-1.5 border ${
                 !neighborhoodId
-                  ? "bg-foreground text-background border-transparent"
+                  ? "bg-brand-600 text-white border-transparent"
                   : "border-black/[.12] dark:border-white/[.2] hover:bg-black/5 dark:hover:bg-white/5"
               }`}
             >
@@ -171,7 +171,7 @@ export default async function MapDirectoryPage({
                 href={`/map?hay=${h.id}`}
                 className={`rounded-full px-3 py-1.5 border ${
                   neighborhoodId === h.id
-                    ? "bg-foreground text-background border-transparent"
+                    ? "bg-brand-600 text-white border-transparent"
                     : "border-black/[.12] dark:border-white/[.2] hover:bg-black/5 dark:hover:bg-white/5"
                 }`}
               >

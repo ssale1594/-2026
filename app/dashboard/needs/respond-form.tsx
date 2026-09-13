@@ -56,7 +56,7 @@ export default function RespondForm({
         <button
           type="submit"
           disabled={isPending}
-          className="rounded-lg bg-foreground text-background text-sm font-medium px-3 py-1.5 disabled:opacity-50"
+          className="rounded-lg bg-brand-600 text-white text-sm font-medium px-3 py-1.5 disabled:opacity-50"
         >
           {isPending ? "جارٍ الإرسال..." : "رد على الطلب"}
         </button>

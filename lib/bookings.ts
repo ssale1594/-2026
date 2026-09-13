@@ -1,30 +1,18 @@
+import type { BadgeTone } from "@/components/ui/badge";
+
 // Shared between the seller board (/dashboard/bookings) and the buyer list
-// (/my/bookings) so a status never renders with two different labels.
+// (/my/bookings) so a status never renders with two different labels — or,
+// now, two different colors for the same state.
 
 export const BOOKING_STATUS: Record<
   string,
-  { label: string; cls: string }
+  { label: string; tone: BadgeTone }
 > = {
-  pending: {
-    label: "⏳ بانتظار التأكيد",
-    cls: "bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30",
-  },
-  confirmed: {
-    label: "✅ مؤكّد",
-    cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30",
-  },
-  completed: {
-    label: "🎉 تم",
-    cls: "bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30",
-  },
-  cancelled: {
-    label: "⛔ ملغى",
-    cls: "bg-red-500/15 text-red-700 dark:text-red-300 border-red-500/30",
-  },
-  no_show: {
-    label: "🚫 لم يحضر",
-    cls: "bg-black/10 dark:bg-white/10 text-black/60 dark:text-white/60 border-black/20 dark:border-white/20",
-  },
+  pending: { label: "⏳ بانتظار التأكيد", tone: "warning" },
+  confirmed: { label: "✅ مؤكّد", tone: "success" },
+  completed: { label: "🎉 تم", tone: "info" },
+  cancelled: { label: "⛔ ملغى", tone: "danger" },
+  no_show: { label: "🚫 لم يحضر", tone: "neutral" },
 };
 
 const DAY_NAMES = [

@@ -5,6 +5,7 @@ import { pageTitle, siteName } from "@/lib/seo";
 import PageHeader from "@/components/page-header";
 import BookingActions from "@/app/dashboard/bookings/booking-actions-client";
 import { BOOKING_STATUS, bookingWhen, isUpcoming } from "@/lib/bookings";
+import { Badge } from "@/components/ui/badge";
 
 export const metadata = { title: pageTitle("مواعيدي") };
 
@@ -89,7 +90,7 @@ export default async function MyBookingsPage({
               </p>
               <Link
                 href="/search"
-                className="rounded-lg bg-foreground text-background text-sm font-medium px-4 py-2 inline-block"
+                className="rounded-lg bg-brand-600 text-white text-sm font-medium px-4 py-2 inline-block"
               >
                 تصفّح الباعة
               </Link>
@@ -128,7 +129,7 @@ function Section({
           {rows.map((r) => {
             const st = BOOKING_STATUS[r.status] ?? {
               label: r.status,
-              cls: "border-black/20",
+              tone: "neutral" as const,
             };
             return (
               <li
@@ -164,11 +165,9 @@ function Section({
                       )}
                     </div>
                   </div>
-                  <span
-                    className={`shrink-0 text-xs rounded-full border px-2.5 py-1 ${st.cls}`}
-                  >
+                  <Badge tone={st.tone} className="shrink-0">
                     {st.label}
-                  </span>
+                  </Badge>
                 </div>
 
                 {r.quoted_price_sar != null && (

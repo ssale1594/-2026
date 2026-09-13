@@ -59,7 +59,7 @@ export default function ApplyForm({
       <button
         type="submit"
         disabled={isPending}
-        className="rounded-lg bg-foreground text-background text-sm font-medium px-3 py-1.5 self-start disabled:opacity-50"
+        className="rounded-lg bg-brand-600 text-white text-sm font-medium px-3 py-1.5 self-start disabled:opacity-50"
       >
         {isPending ? "جارٍ الإرسال..." : "قدّم على الوظيفة"}
       </button>
