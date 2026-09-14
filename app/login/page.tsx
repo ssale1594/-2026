@@ -20,9 +20,11 @@ export default async function LoginPage({
       </header>
 
       <main className="mx-auto max-w-sm px-4 py-16">
-        <h1 className="text-xl font-semibold mb-2">دخول البائعين</h1>
+        <h1 className="text-xl font-semibold mb-2">تسجيل الدخول</h1>
         <p className="text-sm text-black/60 dark:text-white/60 mb-6">
-          نرسل لك رابط دخول على بريدك، بدون كلمة مرور.
+          أدخل بريدك ونرسل لك رابط دخول — بدون كلمة مرور. أول مرة؟ نفس الرابط
+          ينشئ لك حسابًا تلقائيًا. تسجيل بالموقع مجاني ومفتوح لأي زائر، وتقدر
+          بعدها تسجّل نشاطك التجاري لو تحب من لوحة التحكم.
         </p>
         <LoginForm referralCode={ref ?? ""} />
       </main>

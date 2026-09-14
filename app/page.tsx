@@ -193,7 +193,7 @@ export default async function Home() {
           <Link href="/" className="text-xl font-extrabold shrink-0 inline-flex items-center gap-2">
             🏬 {siteName}
           </Link>
-          <SiteNav />
+          <SiteNav isLoggedIn={Boolean(userRow.user)} />
         </div>
       </header>
 

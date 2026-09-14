@@ -17,8 +17,17 @@ const LINKS = [
 // The 7-link nav used to just flex-wrap, which broke into 3 cramped rows on
 // phone widths with no way to collapse it. Below `md` it's now a hamburger
 // menu instead; `md` and up keeps the original horizontal row.
-export default function SiteNav() {
+//
+// isLoggedIn is optional (defaults to "logged out") because most pages using
+// this nav don't fetch auth state — a logged-in visitor there just sees a
+// harmless "دخول" link that re-sends a login email. Pages that already know
+// the auth state (e.g. /map) should pass it through for the accurate label.
+export default function SiteNav({ isLoggedIn = false }: { isLoggedIn?: boolean }) {
   const [open, setOpen] = useState(false);
+
+  const accountLink = isLoggedIn
+    ? { href: "/dashboard", label: "📋 لوحة التحكم" }
+    : { href: "/login", label: "🔑 تسجيل الدخول" };
 
   return (
     <>
@@ -33,6 +42,12 @@ export default function SiteNav() {
           className="hover:underline font-semibold text-rose-600"
         >
           ❤️ المفضلة
+        </Link>
+        <Link
+          href={accountLink.href}
+          className="hover:underline font-semibold text-brand-700 dark:text-brand-500"
+        >
+          {accountLink.label}
         </Link>
       </nav>
 
@@ -64,6 +79,13 @@ export default function SiteNav() {
             className="rounded-lg px-3 py-2 font-semibold text-rose-600 hover:bg-black/[.04] dark:hover:bg-white/[.06]"
           >
             ❤️ المفضلة
+          </Link>
+          <Link
+            href={accountLink.href}
+            onClick={() => setOpen(false)}
+            className="rounded-lg px-3 py-2 font-semibold text-brand-700 dark:text-brand-500 hover:bg-black/[.04] dark:hover:bg-white/[.06]"
+          >
+            {accountLink.label}
           </Link>
         </nav>
       )}

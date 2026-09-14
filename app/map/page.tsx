@@ -161,7 +161,7 @@ export default async function MapDirectoryPage({
           <Link href="/" className="text-lg font-bold shrink-0">
             {siteName}
           </Link>
-          <SiteNav />
+          <SiteNav isLoggedIn={isLoggedIn} />
         </div>
       </header>
 
