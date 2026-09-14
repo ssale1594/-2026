@@ -77,7 +77,7 @@ export default async function DashboardDealsPage() {
               </h1>
               <p className="text-sm text-black/60 dark:text-white/60 mt-2 max-w-2xl">
                 رد على طلبات الصفقات من العملاء. الصفقات المكتملة تُحتسب في
-                شارة "المعاملات الناجحة" في ملفك العام وتُعزز ثقة المشترين.
+                شارة “المعاملات الناجحة” في ملفك العام وتُعزز ثقة المشترين.
               </p>
             </div>
             <div className="flex items-center gap-2">

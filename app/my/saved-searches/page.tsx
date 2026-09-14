@@ -51,7 +51,7 @@ export default async function SavedSearchesPage() {
     const slug = (n.link || "").replace(/^\/listing\//, "").replace(/\/.*/, "");
     if (slug) listingSlugs.push(slug);
   }
-  let listingsBySlug = new Map<string, any>();
+  const listingsBySlug = new Map<string, any>();
   if (listingSlugs.length > 0) {
     const q = await supabase
       .from("listings")

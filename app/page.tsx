@@ -258,10 +258,10 @@ export default async function Home() {
         <section className="mb-10 rounded-[--radius-card] border-2 border-dashed border-brand-500/30 bg-brand-50 dark:bg-brand-50 px-6 py-5 flex flex-wrap items-center justify-between gap-4">
           <div>
             <div className="font-bold text-brand-700 inline-flex items-center gap-2">
-              💡 ما لقيت اللي تبيه؟ أنشر طلبك كـ"احتياج" وخلّ البائعين يأتون لك!
+              💡 ما لقيت اللي تبيه؟ أنشر طلبك كـ“احتياج” وخلّ البائعين يأتون لك!
             </div>
             <p className="text-sm text-brand-700/80 mt-0.5 max-w-2xl">
-              مثال: "أحتاج شاحنة نقل أثاث من حي القديمة إلى الروضة — ميزانية 350 ر.س" الباعة المناسبين يتواصلون معك مباشرة.
+              مثال: “أحتاج شاحنة نقل أثاث من حي القديمة إلى الروضة — ميزانية 350 ر.س” الباعة المناسبين يتواصلون معك مباشرة.
             </p>
           </div>
           <LinkButton href="/needs/new" variant="primary" size="lg" className="shrink-0">
