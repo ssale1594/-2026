@@ -13,7 +13,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid signature" }, { status: 401 });
   }
 
-  const event = JSON.parse(rawBody);
+  let event: { id?: string; status?: string };
+  try {
+    event = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ error: "malformed payload" }, { status: 400 });
+  }
   const chargeId: string | undefined = event.id;
   const status: string | undefined = event.status;
 

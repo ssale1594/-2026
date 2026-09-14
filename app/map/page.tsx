@@ -89,38 +89,60 @@ function osmEmbedSrc(rows: { latitude: number | null; longitude: number | null }
   return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik${marker}`;
 }
 
+// الدليل العام فيه ~1000 مكان (استيراد خرائط قوقل، migration 67). PostgREST
+// يقصّ أي استجابة عند 1000 صف افتراضيًا، وعرض ألف بطاقة بصفحة وحدة ثقيل —
+// فالقسم يُصفّح سيرفريًا ويُصفّى بالاسم بدل تحميل الكل ثم الفلترة بالذاكرة.
+const DIRECTORY_PAGE_SIZE = 60;
+
 export default async function MapDirectoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ hay?: string }>;
+  searchParams: Promise<{ hay?: string; page?: string; q?: string }>;
 }) {
-  const { hay } = await searchParams;
+  const { hay, page, q } = await searchParams;
   const neighborhoodId = hay ? Number(hay) : null;
+  const hoodArg =
+    neighborhoodId && Number.isFinite(neighborhoodId) ? neighborhoodId : null;
+  const pageNum = Math.max(1, Number.parseInt(page ?? "1", 10) || 1);
+  const query = (q ?? "").trim().slice(0, 60);
+  const from = (pageNum - 1) * DIRECTORY_PAGE_SIZE;
 
   const supabase = await createClient();
 
+  // Includes unclaimed public-directory entries too (PLAN.md §23) — public
+  // sourced info for businesses that haven't signed up yet, so the site has
+  // useful content from day one instead of only registered sellers.
+  let publicDir = supabase
+    .rpc("public_directory", { p_neighborhood_id: hoodArg }, { count: "exact" })
+    .eq("source", "directory")
+    .order("business_name");
+  if (query) {
+    // `%`/`_`/`,` are PostgREST filter syntax — strip so a search can't break
+    // the query or widen its own match.
+    publicDir = publicDir.ilike("business_name", `%${query.replace(/[%_,]/g, "")}%`);
+  }
+  publicDir = publicDir.range(from, from + DIRECTORY_PAGE_SIZE - 1);
+
   const [dirQ, publicDirQ, hoodsQ] = await Promise.all([
-    supabase.rpc("map_directory", {
-      p_neighborhood_id:
-        neighborhoodId && Number.isFinite(neighborhoodId) ? neighborhoodId : null,
-    }),
-    // Includes unclaimed public-directory entries too (PLAN.md §23) — public
-    // sourced info for businesses that haven't signed up yet, so the site has
-    // useful content from day one instead of only registered sellers.
-    supabase.rpc("public_directory", {
-      p_neighborhood_id:
-        neighborhoodId && Number.isFinite(neighborhoodId) ? neighborhoodId : null,
-    }),
+    supabase.rpc("map_directory", { p_neighborhood_id: hoodArg }),
+    publicDir,
     supabase.from("neighborhoods").select("id, name_ar").order("name_ar"),
   ]);
 
   const rows = (dirQ.data ?? []) as DirectoryRow[];
   const hoods = (hoodsQ.data ?? []) as { id: number; name_ar: string }[];
-  const unclaimed = (
-    ((publicDirQ.data ?? []) as (UnclaimedRow & { source: string })[]).filter(
-      (r) => r.source === "directory"
-    )
-  ) as UnclaimedRow[];
+  const unclaimed = (publicDirQ.data ?? []) as UnclaimedRow[];
+  const unclaimedTotal = publicDirQ.count ?? unclaimed.length;
+  const totalPages = Math.max(1, Math.ceil(unclaimedTotal / DIRECTORY_PAGE_SIZE));
+
+  const dirHref = (p: number, nextQ = query) => {
+    const sp = new URLSearchParams();
+    if (hoodArg) sp.set("hay", String(hoodArg));
+    if (nextQ) sp.set("q", nextQ);
+    if (p > 1) sp.set("page", String(p));
+    const qs = sp.toString();
+    return qs ? `/map?${qs}#directory` : "/map#directory";
+  };
 
   const located = rows.filter((r) => r.latitude !== null && r.longitude !== null);
   const unlocated = rows.filter((r) => r.latitude === null || r.longitude === null);
@@ -181,7 +203,7 @@ export default async function MapDirectoryPage({
           </nav>
         )}
 
-        {rows.length === 0 && unclaimed.length === 0 ? (
+        {rows.length === 0 && unclaimedTotal === 0 && !query ? (
           <p className="rounded-lg border border-black/[.08] dark:border-white/[.145] px-4 py-8 text-center text-sm text-black/60 dark:text-white/60">
             ما فيه بائعون معتمدون بهذا الحي بعد.
           </p>
@@ -198,12 +220,73 @@ export default async function MapDirectoryPage({
               </section>
             )}
 
-            {unclaimed.length > 0 && (
-              <section className="mt-8">
+            {(unclaimedTotal > 0 || query) && (
+              <section id="directory" className="mt-8">
                 <h2 className="text-sm font-semibold text-black/60 dark:text-white/60 mb-3">
-                  📖 معلومات عامة — أصحابها ما سجّلوا بعد ({unclaimed.length})
+                  📖 معلومات عامة — أصحابها ما سجّلوا بعد ({unclaimedTotal})
                 </h2>
-                <DirectoryGrid rows={unclaimed} />
+
+                <form action="/map" method="get" className="flex gap-2 mb-4">
+                  {hoodArg && <input type="hidden" name="hay" value={hoodArg} />}
+                  <input
+                    type="search"
+                    name="q"
+                    defaultValue={query}
+                    maxLength={60}
+                    placeholder="ابحث باسم المحل…"
+                    className="flex-1 min-w-0 rounded-full border border-black/[.12] dark:border-white/[.2] bg-transparent px-4 py-1.5 text-sm"
+                  />
+                  <button
+                    type="submit"
+                    className="rounded-full bg-brand-600 text-white text-sm font-medium px-4 py-1.5 hover:bg-brand-700"
+                  >
+                    بحث
+                  </button>
+                  {query && (
+                    <Link
+                      href={dirHref(1, "")}
+                      className="rounded-full border border-black/[.12] dark:border-white/[.2] text-sm px-3 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
+                    >
+                      مسح
+                    </Link>
+                  )}
+                </form>
+
+                {unclaimed.length === 0 ? (
+                  <p className="rounded-lg border border-black/[.08] dark:border-white/[.145] px-4 py-6 text-center text-sm text-black/60 dark:text-white/60">
+                    ما فيه نتائج لـ«{query}».
+                  </p>
+                ) : (
+                  <DirectoryGrid rows={unclaimed} />
+                )}
+
+                {totalPages > 1 && (
+                  <nav className="flex items-center justify-between gap-3 mt-4 text-sm">
+                    {pageNum > 1 ? (
+                      <Link
+                        href={dirHref(pageNum - 1)}
+                        className="rounded-full border border-black/[.12] dark:border-white/[.2] px-4 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
+                      >
+                        → السابق
+                      </Link>
+                    ) : (
+                      <span />
+                    )}
+                    <span className="text-black/60 dark:text-white/60">
+                      صفحة {pageNum} من {totalPages}
+                    </span>
+                    {pageNum < totalPages ? (
+                      <Link
+                        href={dirHref(pageNum + 1)}
+                        className="rounded-full border border-black/[.12] dark:border-white/[.2] px-4 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
+                      >
+                        التالي ←
+                      </Link>
+                    ) : (
+                      <span />
+                    )}
+                  </nav>
+                )}
               </section>
             )}
           </>

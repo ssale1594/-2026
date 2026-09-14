@@ -43,3 +43,8 @@ next-env.d.ts
 
 # Claude Code local session state
 .claude/scheduled_tasks.lock
+
+# بيانات خام محلية (استيراد خرائط قوقل) — الناتج النهائي فقط يُرفع (migration 67)
+*.xlsx
+*.xls
+*.csv
