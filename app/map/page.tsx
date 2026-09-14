@@ -123,11 +123,18 @@ export default async function MapDirectoryPage({
   }
   publicDir = publicDir.range(from, from + DIRECTORY_PAGE_SIZE - 1);
 
-  const [dirQ, publicDirQ, hoodsQ] = await Promise.all([
+  const [dirQ, publicDirQ, hoodsQ, userQ] = await Promise.all([
     supabase.rpc("map_directory", { p_neighborhood_id: hoodArg }),
     publicDir,
     supabase.from("neighborhoods").select("id, name_ar").order("name_ar"),
+    supabase.auth.getUser(),
   ]);
+
+  // بوابة تسجيل: أي زائر يشوف اسم/فئة/حي كل سجل بالدليل العام، لكن رقم
+  // التواصل والعنوان الدقيق محجوبان لحد ما يسجّل بالموقع (حتى بحساب مشتري
+  // عادي، مو بالضرورة بائع) — يبني قاعدة مستخدمين بدل ما يبقى المحتوى مجانيًا
+  // بالكامل للزوار المجهولين.
+  const isLoggedIn = Boolean(userQ.data.user);
 
   const rows = (dirQ.data ?? []) as DirectoryRow[];
   const hoods = (hoodsQ.data ?? []) as { id: number; name_ar: string }[];
@@ -257,7 +264,7 @@ export default async function MapDirectoryPage({
                     ما فيه نتائج لـ«{query}».
                   </p>
                 ) : (
-                  <DirectoryGrid rows={unclaimed} />
+                  <DirectoryGrid rows={unclaimed} isLoggedIn={isLoggedIn} />
                 )}
 
                 {totalPages > 1 && (
@@ -296,7 +303,13 @@ export default async function MapDirectoryPage({
   );
 }
 
-function DirectoryGrid({ rows }: { rows: UnclaimedRow[] }) {
+function DirectoryGrid({
+  rows,
+  isLoggedIn,
+}: {
+  rows: UnclaimedRow[];
+  isLoggedIn: boolean;
+}) {
   if (rows.length === 0) return null;
 
   return (
@@ -316,43 +329,57 @@ function DirectoryGrid({ rows }: { rows: UnclaimedRow[] }) {
               </p>
             </div>
 
-            {entry.address_note && (
-              <p className="text-xs text-black/60 dark:text-white/60">
-                {entry.address_note}
-              </p>
-            )}
+            {isLoggedIn ? (
+              <>
+                {entry.address_note && (
+                  <p className="text-xs text-black/60 dark:text-white/60">
+                    {entry.address_note}
+                  </p>
+                )}
 
-            <div className="flex flex-wrap gap-2">
-              {entry.whatsapp_number && (
-                <a
-                  href={`https://wa.me/${entry.whatsapp_number.replace(/\D/g, "")}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-full bg-green-600 text-white text-xs font-medium px-3 py-1.5 hover:bg-green-700"
-                >
-                  واتساب
-                </a>
-              )}
-              {entry.phone && (
-                <a
-                  href={`tel:${entry.phone.replace(/[^\d+]/g, "")}`}
-                  className="rounded-full border border-black/[.12] dark:border-white/[.2] text-xs font-medium px-3 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
-                >
-                  📞 اتصال
-                </a>
-              )}
-              {directions && (
-                <a
-                  href={directions}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="rounded-full border border-black/[.12] dark:border-white/[.2] text-xs font-medium px-3 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
-                >
-                  📍 الاتجاهات
-                </a>
-              )}
-              <ClaimButton directoryEntryId={entry.id} businessName={entry.business_name} />
-            </div>
+                <div className="flex flex-wrap gap-2">
+                  {entry.whatsapp_number && (
+                    <a
+                      href={`https://wa.me/${entry.whatsapp_number.replace(/\D/g, "")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-full bg-green-600 text-white text-xs font-medium px-3 py-1.5 hover:bg-green-700"
+                    >
+                      واتساب
+                    </a>
+                  )}
+                  {entry.phone && (
+                    <a
+                      href={`tel:${entry.phone.replace(/[^\d+]/g, "")}`}
+                      className="rounded-full border border-black/[.12] dark:border-white/[.2] text-xs font-medium px-3 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
+                    >
+                      📞 اتصال
+                    </a>
+                  )}
+                  {directions && (
+                    <a
+                      href={directions}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-full border border-black/[.12] dark:border-white/[.2] text-xs font-medium px-3 py-1.5 hover:bg-black/5 dark:hover:bg-white/5"
+                    >
+                      📍 الاتجاهات
+                    </a>
+                  )}
+                  <ClaimButton directoryEntryId={entry.id} businessName={entry.business_name} />
+                </div>
+              </>
+            ) : (
+              // بوابة تسجيل: الاسم والفئة والحي مجانية للكل، ورقم التواصل
+              // والعنوان الدقيق محجوبان لحد ما يسجّل الزائر — يبني قاعدة
+              // مستخدمين بدل ما يبقى المحتوى كله مجانيًا للزوار المجهولين.
+              <Link
+                href="/login"
+                className="rounded-full bg-black/5 dark:bg-white/10 text-black/70 dark:text-white/70 text-xs font-medium px-3 py-1.5 hover:bg-black/10 dark:hover:bg-white/15 text-center"
+              >
+                🔒 سجّل مجانًا لعرض رقم التواصل والموقع
+              </Link>
+            )}
           </article>
         );
       })}

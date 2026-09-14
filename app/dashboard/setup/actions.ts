@@ -56,5 +56,17 @@ export async function createSellerProfile(
   // referred business joins on its own — see migration 59.
   await supabase.rpc("link_referral_on_signup", { p_seller_id: user.id });
 
+  // يطابق اسم النشاط تلقائيًا مع دليل خرائط قوقل (migration 67/68) — أغلب
+  // البائعين الجدد ما راح يعرفون إن محلهم موجود أصلًا بالدليل العام لو ما
+  // أخبرناهم. best-effort: فشل المطابقة (مثلًا الدالة غير موجودة بعد) لا يجوز
+  // يوقف تسجيل بائع جديد أبدًا.
+  const { data: matches } = await supabase.rpc("match_unclaimed_directory", {
+    p_business_name: parsed.data.businessName,
+  });
+
+  if (matches && matches.length > 0) {
+    redirect("/dashboard/setup/match");
+  }
+
   redirect("/dashboard");
 }
