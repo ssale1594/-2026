@@ -117,7 +117,7 @@ export default async function FavoritesPage() {
                 </h2>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {active.map((l) => (
-                    <FavCard key={l.id} listing={l} userId={user.id} initialFav />
+                    <FavCard key={l.id} listing={l} initialFav />
                   ))}
                 </div>
               </section>
@@ -132,7 +132,6 @@ export default async function FavoritesPage() {
                     <FavCard
                       key={l.id}
                       listing={{ ...l, archived: true }}
-                      userId={user.id}
                       initialFav
                     />
                   ))}
@@ -148,11 +147,9 @@ export default async function FavoritesPage() {
 
 function FavCard({
   listing,
-  userId,
   initialFav,
 }: {
   listing: any;
-  userId: string;
   initialFav?: boolean;
 }) {
   const img = listing.listing_images?.[0]?.storage_path;

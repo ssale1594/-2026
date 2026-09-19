@@ -44,7 +44,14 @@ next-env.d.ts
 # Claude Code local session state
 .claude/scheduled_tasks.lock
 
+# أدوات مطوّر شخصية (سكِلز/إعدادات Claude Code محلية) — مو جزء من المشروع
+/.agents/
+/.claude/
+skills-lock.json
+
 # بيانات خام محلية (استيراد خرائط قوقل) — الناتج النهائي فقط يُرفع (migration 67)
 *.xlsx
 *.xls
 *.csv
+# Added by code-review-graph
+.code-review-graph/

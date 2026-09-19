@@ -7,13 +7,11 @@ export default function OfferButton({
   listingId,
   listingTitle,
   listingPrice,
-  sellerId,
   compact = false,
 }: {
   listingId: string;
   listingTitle?: string | null;
   listingPrice?: number | null;
-  sellerId: string;
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);

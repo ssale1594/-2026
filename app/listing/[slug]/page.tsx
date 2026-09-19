@@ -220,7 +220,6 @@ export default async function ListingPage({
                       listingId={listing.id}
                       listingTitle={listing.title}
                       listingPrice={listing.price ?? null}
-                      sellerId={listing.sellers.id}
                       compact
                     />
                     <StartChatButton

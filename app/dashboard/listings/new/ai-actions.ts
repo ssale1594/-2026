@@ -15,7 +15,8 @@ export async function generateListingDraft(
   rawDescription: string
 ): Promise<DraftResult> {
   // البائع يُحلّ من الجلسة لا من الواجهة (TECH.md §12.5).
-  const seller = await requireSeller();
+  // requireSeller() يعيد التوجيه بنفسه لغير البائع — النداء هو الحارس.
+  await requireSeller();
 
   if (!isListingWriterEnabled()) {
     return { ok: false, error: "المساعد غير مفعّل على هذا الموقع." };

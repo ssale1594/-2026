@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { requireAdmin } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import AdminHeader from "../admin-header";

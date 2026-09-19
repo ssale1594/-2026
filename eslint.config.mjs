@@ -27,7 +27,17 @@ const eslintConfig = [
     // فحص فعلية بدل ما يفشل بالكامل على أول تشغيل؛ تُشدَّد تدريجيًا لاحقًا.
     rules: {
       "@typescript-eslint/no-explicit-any": "warn",
-      "@typescript-eslint/no-unused-vars": "warn",
+      // البادئة `_` هي علامة "مقصود تجاهله" المستخدمة أصلًا بالكود
+      // (`const { data: _u } = ...` بعد استدعاء يهمّنا أثره لا نتيجته).
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          varsIgnorePattern: "^_",
+          argsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+          destructuredArrayIgnorePattern: "^_",
+        },
+      ],
     },
   },
 ];

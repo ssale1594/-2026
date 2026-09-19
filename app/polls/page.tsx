@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import PollVoteClient from "./poll-vote-client";
-import { siteName, siteUrl } from "@/lib/seo";
+import { siteName } from "@/lib/seo";
 
 export const metadata: Metadata = {
   title: "الاستفتاء الأسبوعي — أفضل بائع في الزلفي",

@@ -2,23 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { SearchParamsObj, SearchSort } from "./page";
+import type { SearchSort } from "./page";
 
 type Neighborhood = { id: number; name_ar: string; slug: string };
 type Category = { id: number; name_ar: string; slug: string; listing_count: number };
-
-type State = Required<
-  Pick<SearchParamsObj, "ng" | "img">
-> & {
-  q: string;
-  min: number | null;
-  max: number | null;
-  n: string | null;
-  c: string | null;
-  sort: SearchSort;
-  t: number;
-  r: number | null;
-};
 
 type Props = {
   neighborhoods: Neighborhood[];

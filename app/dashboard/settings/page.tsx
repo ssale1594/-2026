@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { pageTitle, siteName } from "@/lib/seo";
+import { pageTitle } from "@/lib/seo";
 import DashboardHeader from "@/app/dashboard/dashboard-header";
 import SettingsForm from "./settings-form";
 

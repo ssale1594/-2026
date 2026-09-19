@@ -1,14 +1,13 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
-import { pageTitle, siteName, siteUrl } from "@/lib/seo";
+import { pageTitle, siteName } from "@/lib/seo";
 import SearchBox from "@/components/search-box";
 import SaveSearchButton from "./save-search-button";
 import SearchFilters from "./search-filters";
 import SortSelect from "./sort-select";
 import { getNeighborhoods } from "@/lib/data/neighborhoods";
 import { listingImageUrl } from "@/lib/storage";
-import Image from "next/image";
 
 export const metadata: Metadata = {
   title: pageTitle("البحث المتقدم"),

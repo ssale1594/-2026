@@ -1,6 +1,6 @@
 "use client";
 
-import { useOptimistic, useTransition, useState } from "react";
+import { useTransition, useState } from "react";
 import { sendChatMessage, markThreadRead } from "./inbox-actions";
 
 export type ChatMsg = {
